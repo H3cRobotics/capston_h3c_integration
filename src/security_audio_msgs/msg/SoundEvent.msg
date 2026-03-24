@@ -1,0 +1,11 @@
+string event_id
+builtin_interfaces/Time stamp
+builtin_interfaces/Time clip_start_time
+string label
+float32 confidence
+float32 doa_deg
+float32 level_dbfs
+string clip_wav_path
+string clip_flac_path
+bool transfer_requested
+bool transfer_success

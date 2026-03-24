@@ -1,0 +1,6 @@
+/**:
+  ros__parameters:
+    server_url: "http://10.162.213.189:8000"
+    pose_topic: "/robot_pose"
+    remote_host: "10.162.213.189:8000"
+    method: "http"

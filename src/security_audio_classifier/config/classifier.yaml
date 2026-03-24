@@ -1,0 +1,5 @@
+/**:
+  ros__parameters:
+    top_k: 5
+    yamnet_python: "/home/chan/security_audio_ws/.venv_yamnet/bin/python"
+    worker_script: "/home/chan/security_audio_ws/src/security_audio_classifier/security_audio_classifier/yamnet_worker.py"

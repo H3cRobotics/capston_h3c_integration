@@ -1,0 +1,8 @@
+string event_id
+builtin_interfaces/Time stamp
+builtin_interfaces/Time clip_start_time
+string clip_wav_path
+float32 doa_deg
+float32 level_dbfs
+float32 duration_sec
+uint32 sample_rate

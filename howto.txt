@@ -1,0 +1,12 @@
+ssh -T git@github-second
+cd ~/capstion_integration_ws
+git init
+git@github.com:helloimsuhyun/capston_h3c_integration.git
+
+git config user.name "suhyun"
+git config user.email "chsuk02@hanyang.ac.kr"
+
+git add .
+git commit -m "init"
+git branch -M main
+git push -u origin main

@@ -1,0 +1,26 @@
+/**:
+  ros__parameters:
+    sample_rate: 16000
+    pre_trigger_sec: 1.0
+    post_trigger_sec: 0.5
+    trigger_dbfs: -10.0
+    min_trigger_interval_sec: 3.0
+    trigger_consecutive_chunks: 3
+    save_dir: "/tmp/security_audio_clips"
+    chunk_size: 1600
+
+    device_name_contains: "ReSpeaker 4 Mic Array"
+    device_index: 0
+    input_channels: 6
+    channel_index: 0
+
+    doa_topic: "/sound/doa_deg"
+    enable_doa_sub: true
+
+    publish_rate_hz: 10.0
+    raw_topic: "/sound/doa_raw_deg"
+    mapped_topic: "/sound/doa_deg"
+    voice_topic: "/sound/voice_active"
+    front_offset_deg: 0.0
+    invert_sign: false
+    use_vad_gate: false
