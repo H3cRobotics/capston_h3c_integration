@@ -1,8 +1,16 @@
 통합 런치 각각 실행하기
+
 1. vision 패키지 런치
 
 ros2 launch patrol_vision system.launch.py
 
 2. 오디오 패키지 런치
 ros2 launch patrol_bridge bringup.launch.py
+
+3. ros - server bridge
 ros2 launch security_audio_system bringup.launch.py
+
+============ 
+
+전체 실행
+ros2 launch capston_bringup bringup_all.launch.py
