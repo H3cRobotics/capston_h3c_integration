@@ -9,6 +9,8 @@ log/
 .colcon/
 .colcon_install_layout
 
+.vscode/
+
 # =========================
 # Python
 # =========================
