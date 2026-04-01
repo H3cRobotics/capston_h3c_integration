@@ -28,11 +28,23 @@ class CameraCalibCliNode(Node):
         
         # 6x11 보드는 가로 사각형 11개, 세로 사각형 6개이므로 
         # OpenCV 내부 코너 기준은 가로 10개, 세로 5개입니다.
-        self.declare_parameter("cols", 11)              # 전체 사각형 열 개수
-        self.declare_parameter("rows", 6)               # 전체 사각형 행 개수
+        self.declare_parameter("cols", 6)              # 전체 사각형 열 개수
+        self.declare_parameter("rows", 11)               # 전체 사각형 행 개수
         self.declare_parameter("square_size", 0.05)     # 50mm -> 0.05m
         self.declare_parameter("marker_size", 0.037)    # 37mm -> 0.037m
         self.declare_parameter("preview", True)
+
+        self.params = aruco.DetectorParameters()
+
+        # 마커 경계선을 더 정밀하게 찾기 위한 설정
+        self.params.adaptiveThreshWinSizeMin = 3
+        self.params.adaptiveThreshWinSizeMax = 23
+        self.params.adaptiveThreshWinSizeStep = 10
+        # 마커가 작게 보일 때를 대비한 최소 크기 설정 (0.03 = 화면의 3% 이상)
+        self.params.minMarkerPerimeterRate = 0.03 
+
+        # detector 생성 시 파라미터 적용
+        self.detector = aruco.CharucoDetector(self.board, detectorParams=self.params)
 
         # 파라미터 로드
         image_topic = str(self.get_parameter("image_topic").value)
