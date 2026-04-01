@@ -21,6 +21,6 @@
     raw_topic: "/sound/doa_raw_deg"
     mapped_topic: "/sound/doa_deg"
     voice_topic: "/sound/voice_active"
-    front_offset_deg: 0.0
+    front_offset_deg: 90.0
     invert_sign: false
     use_vad_gate: false
