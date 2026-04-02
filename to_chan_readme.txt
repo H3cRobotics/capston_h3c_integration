@@ -31,10 +31,10 @@ ros2 topic pub --once /reload_waypoints std_msgs/msg/Empty "{}"
 
 # 3. 캡처 로직 -----------------------------------------------------------------------------
 
-# 터미널 5 : place_id 전달 - 로봇이 도착한 place_id(위의 waypoint_json으로 받은)을 보내고 캡처 트리거 발행
+# 터미널 5 : place_id를 포함한 캡처 트리거 발행
+# 로봇이 도착한 place_id(예: P03)를 /patrol/capture_trigger 로 직접 보냄
 source install/setup.bash
-ros2 topic pub /patrol/current_place std_msgs/msg/String "{data: 'P03'}" --once
-ros2 topic pub /patrol/capture_trigger std_msgs/msg/Empty "{}" --once
+ros2 topic pub --once /patrol/capture_trigger std_msgs/msg/String "{data: 'P03'}"
 
 
 
