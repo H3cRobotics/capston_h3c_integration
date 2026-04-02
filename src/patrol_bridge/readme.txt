@@ -18,12 +18,12 @@ candump can0
 cd capston_h3c_integration
 source install/setup.bash
 
-ros2 launch patrol_bringup bringup.launch.py server_ip:=127.0.0.1
+ros2 launch capston_bringup bringup_all.launch.py server_ip:=127.0.0.1
 ros2 run patrol_bridge dummy_patrol_server_node
 
 # waypoint 리로드
-ros2 topic pub--once /reload_waypoints std_msgs/msg/Empty"{}"
-ros2 topicecho /waypoints_json
+ros2 topic pub --once /reload_waypoints std_msgs/msg/Empty "{}"
+ros2 topic echo /waypoints_json
 
 
 # 캡처
