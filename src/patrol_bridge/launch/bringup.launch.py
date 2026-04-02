@@ -3,20 +3,20 @@ from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+
 def generate_launch_description():
     server_url = LaunchConfiguration('server_url')
-    
+
     # Pose sender
     pose_topic = LaunchConfiguration('pose_topic')
     status_topic = LaunchConfiguration('status_topic')
     post_period_sec = LaunchConfiguration('post_period_sec')
-    
+
     # Goal sender
     goal_topic = LaunchConfiguration('goal_topic')
     next_place_topic = LaunchConfiguration('next_place_topic')
 
-    # Teacher
-    teach_trigger_topic = LaunchConfiguration('teach_trigger_topic')
+    # Teacher (merged)
     default_patrol_enabled = LaunchConfiguration('default_patrol_enabled')
     place_prefix = LaunchConfiguration('place_prefix')
 
@@ -24,6 +24,8 @@ def generate_launch_description():
     can_interface = LaunchConfiguration('can_interface')
     teach_can_id = LaunchConfiguration('teach_can_id')
     debounce_sec = LaunchConfiguration('debounce_sec')
+    http_timeout_sec = LaunchConfiguration('http_timeout_sec')
+    queue_size = LaunchConfiguration('queue_size')
 
     # Command Bridge
     waypoints_topic = LaunchConfiguration('waypoints_topic')
@@ -33,22 +35,23 @@ def generate_launch_description():
 
     return LaunchDescription([
         DeclareLaunchArgument('server_url', default_value='http://192.168.0.16:8000'),
-        
+
         DeclareLaunchArgument('pose_topic', default_value='/robot_pose'),
         DeclareLaunchArgument('status_topic', default_value='/robot_status'),
         DeclareLaunchArgument('post_period_sec', default_value='0.5'),
-        
+
         DeclareLaunchArgument('goal_topic', default_value='/goal_pose_2d'),
         DeclareLaunchArgument('next_place_topic', default_value='/next_place_id'),
-        
-        DeclareLaunchArgument('teach_trigger_topic', default_value='/teach_trigger'),
+
         DeclareLaunchArgument('default_patrol_enabled', default_value='True'),
         DeclareLaunchArgument('place_prefix', default_value='P'),
-        
+
         DeclareLaunchArgument('can_interface', default_value='can0'),
-        DeclareLaunchArgument('teach_can_id', default_value='258'), # 0x102
-        DeclareLaunchArgument('debounce_sec', default_value='5.0'),
-        
+        DeclareLaunchArgument('teach_can_id', default_value='258'),  # 0x102
+        DeclareLaunchArgument('debounce_sec', default_value='1.0'),
+        DeclareLaunchArgument('http_timeout_sec', default_value='3.0'),
+        DeclareLaunchArgument('queue_size', default_value='10'),
+
         DeclareLaunchArgument('waypoints_topic', default_value='/patrol/waypoints_json'),
         DeclareLaunchArgument('command_topic', default_value='/patrol/command'),
         DeclareLaunchArgument('reload_waypoints_topic', default_value='/patrol/reload_waypoints'),
@@ -79,29 +82,21 @@ def generate_launch_description():
 
         Node(
             package="patrol_bridge",
-            executable="teacher_node",
-            name="teacher_node",
+            executable="can_teacher_node",
+            name="can_teacher_node",
             parameters=[{
                 "server_url": server_url,
                 "robot_pose_topic": pose_topic,
-                "teach_trigger_topic": teach_trigger_topic,
+                "can_interface": can_interface,
+                "teach_can_id": teach_can_id,
                 "default_patrol_enabled": default_patrol_enabled,
                 "place_prefix": place_prefix,
+                "debounce_sec": debounce_sec,
+                "http_timeout_sec": http_timeout_sec,
+                "queue_size": queue_size,
             }],
         ),
 
-        Node(
-            package="patrol_bridge",
-            executable="can_teach_trigger",
-            name="can_teach_trigger",
-            parameters=[{
-                "can_interface": can_interface,
-                "teach_can_id": teach_can_id,
-                "debounce_sec": debounce_sec,
-                "teach_trigger_topic": teach_trigger_topic,
-            }],
-        ),
-        
         Node(
             package="patrol_bridge",
             executable="patrol_command_bridge",

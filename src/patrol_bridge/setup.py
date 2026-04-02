@@ -24,11 +24,12 @@ setup(
 			'console_scripts': [
 			    'robot_pose_sender = patrol_bridge.robot_pose_sender:main',
 			    'robot_goal_sender = patrol_bridge.robot_goal_sender:main', 
-			    'teacher_node = patrol_bridge.teacher_node:main',
-			    'can_teach_trigger = patrol_bridge.can_teach_trigger:main',
+			    'can_teacher_node = patrol_bridge.can_teacher_node:main',
 			    'dummy_pose_input = patrol_bridge.dummy_pose_input:main',
 			    'patrol_command_bridge = patrol_bridge.patrol_command_bridge:main',
                 'dummy_patrol_server_node = patrol_bridge.dummy_patrol_server_node:main',
+
+                
 			],
     },
 )
