@@ -1,0 +1,31 @@
+person_tracker_node:
+  ros__parameters:
+    mode: "webcam"
+
+    webcam_color_topic: "/camera/color/image_raw"
+
+    realsense_color_topic: "/camera/camera/color/image_raw"
+    realsense_depth_topic: "/camera/camera/aligned_depth_to_color/image_raw"
+    camera_info_topic: "/camera/camera/color/camera_info"
+
+    model_path: "yolov8n.engine"  # 후에 절대경로로 수정
+    tracker_cfg: "bytetrack.yaml"
+    conf_thres: 0.35
+    iou_thres: 0.45
+    use_gpu: true
+
+    annotated_topic: "/person_tracking/annotated"
+    tracks_topic: "/person_tracking/tracks_json"
+
+    depth_roi_half: 3
+    min_depth_m: 0.2
+    max_depth_m: 8.0
+    depth_scale: 0.001
+
+    sync_slop: 0.08
+    queue_size: 5
+
+    worker_sleep_ms: 2
+    stale_frame_ms: 300
+    log_fps: true
+    max_process_fps: 10.0
