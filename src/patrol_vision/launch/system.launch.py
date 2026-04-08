@@ -57,4 +57,11 @@ def generate_launch_description():
 						}
 					],
 				),
+
+		Node(
+				package="patrol_vision",
+				executable="patrol_http_bridge",
+				name="patrol_http_bridge",
+				output="screen",
+			),
 	])

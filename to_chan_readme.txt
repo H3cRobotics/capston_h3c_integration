@@ -20,11 +20,11 @@ ros2 run patrol_bridge dummy_patrol_server_node
 
 터미널 3 : waypoint reload 수신 토픽
 source install/setup.bash
-ros2 topic echo /waypoints_json --full-length
+ros2 topic echo /patrol/waypoints_json --full-length
 
 터미널 4 : waypoint reload 트리거 토픽
 source install/setup.bash
-ros2 topic pub --once /reload_waypoints std_msgs/msg/Empty "{}"
+ros2 topic pub --once /patrol/reload_waypoints std_msgs/msg/Empty "{}"
 
 * 트리거 1회당 /waypoints_json에 "한번" 발행하므로 수신 토픽은 항상 켜져잇어야함
 

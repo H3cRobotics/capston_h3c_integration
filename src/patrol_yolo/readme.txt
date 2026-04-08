@@ -19,6 +19,8 @@ aarch64
 설치 ==============================================
 sudo apt-get update
 sudo apt-get install -y python3-pip libopenblas-dev
+
+pip3 install numpy==1.26.4
 python3 -m pip uninstall -y torch torchvision
 pip3 uninstall ultralytics -y
 
