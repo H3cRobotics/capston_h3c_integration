@@ -1,3 +1,6 @@
+**** 참고 https://rainbow-chaser.tistory.com/4
+
+
 0. 
 제트팩 버전 확인  ==============================================
 dpkg-query --show nvidia-l4t-core
@@ -29,19 +32,17 @@ bash ./install_cusparselt.sh
 
 ========= 다운받은 wget이 cuda version 적용 및 문법 오류가 있을 수 있는데 gpt 시키기
 1. torch
-wget https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.4.0a0+3bcc3cddb5.nv24.07.16234504-cp310-cp310-linux_aarch64.whl
-pip3 install ./torch-2.4.0a0+3bcc3cddb5.nv24.07.16234504-cp310-cp310-linux_aarch64.whl
+wget https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.3.0-cp310-cp310-linux_aarch64.whl
+pip install ./torch-2.3.0-cp310-cp310-linux_aarch64.whl
 
 python3 - <<EOF
 import torch
-print("torch:", torch.__version__)
-print("cuda available:", torch.cuda.is_available())
-print("cuda version:", torch.version.cuda)
-if torch.cuda.is_available():
-    print("gpu:", torch.cuda.get_device_name(0))
+print(torch.__version__)
+print(torch.cuda.is_available())
 EOF
 
-python3 -m pip install -U ultralytics
+wget https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torchvision-0.18.0a0+6043bc2-cp310-cp310-linux_aarch64.whl
+pip install ./torchvision-0.18.0a0+6043bc2-cp310-cp310-linux_aarch64.whl
 
 확인 ========================================== 
 python3 - <<EOF
@@ -52,6 +53,10 @@ print(torch.version.cuda)
 if torch.cuda.is_available():
     print(torch.cuda.get_device_name(0))
 EOF
+
+python3 -m pip install -U ultralytics
+
+
 
 0.1 pt파일 텐서화 
 
