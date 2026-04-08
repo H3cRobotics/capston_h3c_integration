@@ -162,10 +162,6 @@ class PersonTrackerNode(Node):
             self.get_logger().error(f"Color image conversion failed: {e}")
             return
 
-        self.get_logger().info(
-            f"[CB] color frame in stamp={color_msg.header.stamp.sec}.{color_msg.header.stamp.nanosec}",
-            throttle_duration_sec=2.0
-        )
 
         packet = {
             "stamp_ns": self.msg_to_ns(color_msg),           # 참고용
@@ -252,10 +248,7 @@ class PersonTrackerNode(Node):
                     depth=packet["depth"]
                 )
 
-                self.get_logger().info(
-                    f"[YOLO] done, tracks={len(tracks)}",
-                    throttle_duration_sec=2.0
-                )
+
 
                 self.publish_outputs(
                     color_msg=packet["color_msg"],
@@ -391,10 +384,7 @@ class PersonTrackerNode(Node):
             ann_msg = self.bridge.cv2_to_imgmsg(annotated, encoding="bgr8")
             ann_msg.header = color_msg.header
             self.annotated_pub.publish(ann_msg)
-            self.get_logger().info(
-                "[PUB] annotated published",
-                throttle_duration_sec=2.0
-            )
+
         except Exception as e:
             self.get_logger().error(f"Annotated publish failed: {e}")
 

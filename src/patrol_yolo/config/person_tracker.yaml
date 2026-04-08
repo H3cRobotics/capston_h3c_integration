@@ -28,4 +28,4 @@ person_tracker_node:
     worker_sleep_ms: 2
     stale_frame_ms: 300
     log_fps: true
-    max_process_fps: 10.0
+    max_process_fps: 15.0
