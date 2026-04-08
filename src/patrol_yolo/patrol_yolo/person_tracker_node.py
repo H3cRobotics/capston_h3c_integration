@@ -112,7 +112,7 @@ class PersonTrackerNode(Node):
         self.last_infer_time = 0.0
 
         self.get_logger().info(f"Loading YOLO model: {self.model_path}")
-        self.model = YOLO(self.model_path)
+        self.model = YOLO(self.model_path, task = "detect")
 
         self.annotated_pub = self.create_publisher(Image, self.annotated_topic, 10)
         self.tracks_pub = self.create_publisher(String, self.tracks_topic, 10)
