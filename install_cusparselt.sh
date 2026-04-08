@@ -1,5 +1,6 @@
 #!/bin/bash
 
+CUDA_VERSION = 12.6
 set -ex
 
 # cuSPARSELt license: https://docs.nvidia.com/cuda/cusparselt/license.html
