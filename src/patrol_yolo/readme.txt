@@ -28,10 +28,18 @@ export CUDA_VERSION=12.6
 bash ./install_cusparselt.sh
 
 ========= 다운받은 wget이 cuda version 적용 및 문법 오류가 있을 수 있는데 gpt 시키기
-
+1. torch
 wget https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torch-2.4.0a0+3bcc3cddb5.nv24.07.16234504-cp310-cp310-linux_aarch64.whl
 pip3 install ./torch-2.4.0a0+3bcc3cddb5.nv24.07.16234504-cp310-cp310-linux_aarch64.whl
 
+python3 - <<EOF
+import torch
+print("torch:", torch.__version__)
+print("cuda available:", torch.cuda.is_available())
+print("cuda version:", torch.version.cuda)
+if torch.cuda.is_available():
+    print("gpu:", torch.cuda.get_device_name(0))
+EOF
 
 python3 -m pip install -U ultralytics
 
