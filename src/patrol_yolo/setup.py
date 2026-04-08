@@ -20,7 +20,6 @@ setup(
     maintainer_email='example@example.com',
     description='Person detection and tracking node for webcam / RealSense',
     license='Apache License 2.0',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'person_tracker_node = patrol_yolo.person_tracker_node:main',

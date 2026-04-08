@@ -89,7 +89,7 @@ cd ~/ros2_ws
 colcon build --packages-select person_tracker_ros
 source install/setup.bash
 
-ros2 launch person_tracker_ros person_tracker.launch.py
+ros2 launch patrol_yolo person_tracker.launch.py
 
 
 ==============================

@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>person_tracker_ros</name>
+  <name>patrol_yolo</name>
   <version>0.0.1</version>
   <description>Person detection and tracking node for webcam / RealSense</description>
 
