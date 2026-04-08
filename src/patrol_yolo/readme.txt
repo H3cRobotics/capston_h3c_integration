@@ -41,7 +41,15 @@ print(torch.__version__)
 print(torch.cuda.is_available())
 EOF
 
-pip install https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/torchvision-0.18.0a0+6043bc2-cp310-cp310-linux_aarch64.whl
+
+=== 2. torchvision
+
+sudo apt-get install -y libjpeg-dev zlib1g-dev libpng-dev git
+
+git clone --branch v0.20.0 https://github.com/pytorch/vision.git
+cd vision
+
+python3 -m pip install -v --no-build-isolation .
 
 확인 ========================================== 
 python3 - <<EOF
