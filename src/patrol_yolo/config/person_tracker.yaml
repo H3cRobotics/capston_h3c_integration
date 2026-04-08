@@ -8,7 +8,7 @@ person_tracker_node:
     realsense_depth_topic: "/camera/camera/aligned_depth_to_color/image_raw"
     camera_info_topic: "/camera/camera/color/camera_info"
 
-    model_path: "yolov8n.engine"  # 후에 절대경로로 수정
+    model_path: "/home/chan/capston_h3c_integration/src/patrol_yolo/model/yolov8n.engine"  # 후에 절대경로로 수정
     tracker_cfg: "bytetrack.yaml"
     conf_thres: 0.35
     iou_thres: 0.45
