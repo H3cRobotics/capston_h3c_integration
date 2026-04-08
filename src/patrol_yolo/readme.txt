@@ -27,10 +27,11 @@ pip3 install numpy==1.26.4
 pip3 uninstall torch torchvision ultralytics -y
 
 wget https://raw.githubusercontent.com/pytorch/pytorch/5c6af2b583709f6176898c017424dc9981023c28/.ci/docker/common/install_cusparselt.sh
-export CUDA_VERSION=12.6
-bash ./install_cusparselt.sh
+sudo CUDA_VERSION=12.6 bash ./install_cusparselt.sh
 
-========= 다운받은 wget이 cuda version 적용 및 문법 오류가 있을 수 있는데 gpt 시키기
+* 다운받은 wget이 cuda version 적용 및 문법 오류가 있을 수  있는데 gpt 시켜서 ./install_cusparselt.sh를 수정해야한다.
+
+========= 
 1. torch
 wget https://developer.download.nvidia.com/compute/redist/jp/v61/pytorch/torch-2.5.0a0+872d972e41.nv24.08.17622132-cp310-cp310-linux_aarch64.whl
 python3 -m pip install --no-cache ./torch-2.5.0a0+872d972e41.nv24.08.17622132-cp310-cp310-linux_aarch64.whl
@@ -42,7 +43,7 @@ print(torch.cuda.is_available())
 EOF
 
 
-=== 2. torchvision
+2. torchvision
 
 sudo apt-get install -y libjpeg-dev zlib1g-dev libpng-dev git
 
@@ -50,6 +51,7 @@ git clone --branch v0.20.0 https://github.com/pytorch/vision.git
 cd vision
 
 python3 -m pip install -v --no-build-isolation .
+cd ..
 
 확인 ========================================== 
 python3 - <<EOF
@@ -63,6 +65,11 @@ EOF
 
 python3 -m pip install -U ultralytics
 
+확인 ===
+python3 - <<EOF
+from ultralytics import YOLO
+print("ultralytics ok")
+EOF
 
 
 0.1 pt파일 텐서화 
@@ -71,6 +78,8 @@ python3 -m pip install -U ultralytics
 # 추론 이미지 사이즈 640, FP16 최적화 >> engine 파일 생성
 
 - yaml 설정에서 model path를 engine파일의 절대경로로 변경
+
+
 
 
 ==================================
@@ -94,3 +103,11 @@ ros2 topic echo /person_tracking/tracks_json
 
 트레킹 시각화 토픽 -- /person_tracking/annotated
 rqt_image_view
+
+
+
+
+
+
+==
+find . -type f -printf "%s %p\n" | sort -nr | head -30 | awk '{printf "%.2f MB\t%s\n", $1/1024/1024, $2}'
