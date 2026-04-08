@@ -11,7 +11,7 @@ import rclpy
 from rclpy.node import Node
 
 from sensor_msgs.msg import Image, CameraInfo
-from std_msgs.msg import String
+from std_msgs.msg import String, Bool
 from cv_bridge import CvBridge
 
 from message_filters import Subscriber, ApproximateTimeSynchronizer
@@ -56,6 +56,11 @@ class PersonTrackerNode(Node):
         self.declare_parameter("max_process_fps", 10.0)
 
         self.declare_parameter("imgsz", 640)
+
+        # inference control
+        self.declare_parameter("enable_topic", "/person_tracking/enable")
+        self.declare_parameter("start_enabled", True)
+
         self.imgsz = int(self.get_parameter("imgsz").value)
 
         self.mode = str(self.get_parameter("mode").value).lower().strip()
@@ -87,6 +92,9 @@ class PersonTrackerNode(Node):
         self.log_fps = bool(self.get_parameter("log_fps").value)
         self.max_process_fps = float(self.get_parameter("max_process_fps").value)
 
+        self.enable_topic = self.get_parameter("enable_topic").value
+        self.inference_enabled = bool(self.get_parameter("start_enabled").value)
+
         if self.mode not in ["webcam", "realsense"]:
             self.get_logger().warn(f"Unknown mode '{self.mode}', fallback to webcam")
             self.mode = "webcam"
@@ -114,6 +122,13 @@ class PersonTrackerNode(Node):
 
         self.annotated_pub = self.create_publisher(Image, self.annotated_topic, 10)
         self.tracks_pub = self.create_publisher(String, self.tracks_topic, 10)
+
+        self.enable_sub = self.create_subscription(
+            Bool,
+            self.enable_topic,
+            self.enable_callback,
+            10
+        )
 
         self.camera_info_sub = self.create_subscription(
             CameraInfo,
@@ -147,7 +162,17 @@ class PersonTrackerNode(Node):
         self.worker_thread = threading.Thread(target=self.worker_loop, daemon=True)
         self.worker_thread.start()
 
+        init_state = "ON" if self.inference_enabled else "OFF"
+        self.get_logger().info(f"[CONTROL] YOLO inference default={init_state}")
         self.get_logger().info("PersonTrackerNode initialized with worker thread.")
+
+    def enable_callback(self, msg: Bool):
+        prev_state = self.inference_enabled
+        self.inference_enabled = bool(msg.data)
+
+        if prev_state != self.inference_enabled:
+            state = "ON" if self.inference_enabled else "OFF"
+            self.get_logger().info(f"[CONTROL] YOLO inference {state}")
 
     def camera_info_callback(self, msg: CameraInfo):
         self.fx = float(msg.k[0])
@@ -162,10 +187,9 @@ class PersonTrackerNode(Node):
             self.get_logger().error(f"Color image conversion failed: {e}")
             return
 
-
         packet = {
-            "stamp_ns": self.msg_to_ns(color_msg),           # 참고용
-            "recv_ns": self.get_clock().now().nanoseconds,  # stale 체크용
+            "stamp_ns": self.msg_to_ns(color_msg),
+            "recv_ns": self.get_clock().now().nanoseconds,
             "color_msg": color_msg,
             "color": color,
             "depth": None,
@@ -191,8 +215,8 @@ class PersonTrackerNode(Node):
         )
 
         packet = {
-            "stamp_ns": self.msg_to_ns(color_msg),           # 참고용
-            "recv_ns": self.get_clock().now().nanoseconds,  # stale 체크용
+            "stamp_ns": self.msg_to_ns(color_msg),
+            "recv_ns": self.get_clock().now().nanoseconds,
             "color_msg": color_msg,
             "color": color,
             "depth": depth,
@@ -207,7 +231,7 @@ class PersonTrackerNode(Node):
         while not self.stop_event.is_set():
             now = time.time()
 
-            if self.max_process_fps > 0:
+            if self.inference_enabled and self.max_process_fps > 0:
                 min_interval = 1.0 / self.max_process_fps
                 if (now - self.last_infer_time) < min_interval:
                     time.sleep(self.worker_sleep_ms / 1000.0)
@@ -241,14 +265,34 @@ class PersonTrackerNode(Node):
                     )
                     continue
 
+                if not self.inference_enabled:
+                    annotated = packet["color"].copy()
+                    tracks = []
+
+                    if self.log_fps:
+                        cv2.putText(
+                            annotated,
+                            "YOLO OFF",
+                            (20, 40),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            1.0,
+                            (0, 0, 255),
+                            2
+                        )
+
+                    self.publish_outputs(
+                        color_msg=packet["color_msg"],
+                        annotated=annotated,
+                        tracks=tracks
+                    )
+                    continue
+
                 self.last_infer_time = time.time()
 
                 annotated, tracks = self.run_tracking(
                     color=packet["color"],
                     depth=packet["depth"]
                 )
-
-
 
                 self.publish_outputs(
                     color_msg=packet["color_msg"],
@@ -308,21 +352,27 @@ class PersonTrackerNode(Node):
 
             item: Dict[str, Any] = {
                 "person_id": track_id,
-                "x": u,
-                "y": v,
+                "u": u,
+                "v": v,
                 "confidence": conf,
                 "bbox_xyxy": [x1, y1, x2, y2],
             }
 
-            if self.fx is not None and self.fy is not None and self.cx0 is not None and self.cy0 is not None:
-                item["x_norm"] = float((u - self.cx0) / self.fx)
-                item["y_norm"] = float((v - self.cy0) / self.fy)
-
+            #depth카메라이면 .. 
             z_m = None
             if depth is not None:
                 z_m = self.get_depth_median(depth, u, v, self.depth_roi_half)
                 if z_m is not None:
                     item["z"] = float(z_m)
+
+                    if self.fx is not None and self.fy is not None and self.cx0 is not None and self.cy0 is not None:
+                        X_cam = (u - self.cx0) / self.fx * z_m
+                        Y_cam = (v - self.cy0) / self.fy * z_m
+                        Z_cam = z_m
+
+                        item["X_cam"] = float(X_cam)
+                        item["Y_cam"] = float(Y_cam)
+                        item["Z_cam"] = float(Z_cam)
 
             tracks.append(item)
 
@@ -384,12 +434,12 @@ class PersonTrackerNode(Node):
             ann_msg = self.bridge.cv2_to_imgmsg(annotated, encoding="bgr8")
             ann_msg.header = color_msg.header
             self.annotated_pub.publish(ann_msg)
-
         except Exception as e:
             self.get_logger().error(f"Annotated publish failed: {e}")
 
         payload = {
             "mode": self.mode,
+            "inference_enabled": self.inference_enabled,
             "header": {
                 "stamp_sec": int(color_msg.header.stamp.sec),
                 "stamp_nanosec": int(color_msg.header.stamp.nanosec),
