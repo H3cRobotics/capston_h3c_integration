@@ -165,8 +165,14 @@ class PersonTrackerNode(Node):
             self.get_logger().error(f"Color image conversion failed: {e}")
             return
 
+        self.get_logger().info(
+            f"[CB] color frame in stamp={color_msg.header.stamp.sec}.{color_msg.header.stamp.nanosec}",
+            throttle_duration_sec=2.0
+        )
+
         packet = {
             "stamp_ns": self.msg_to_ns(color_msg),
+            "recv_ns": self.get_clock().now().nanoseconds,
             "color_msg": color_msg,
             "color": color,
             "depth": None,
