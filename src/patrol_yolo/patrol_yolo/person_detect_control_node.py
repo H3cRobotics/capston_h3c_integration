@@ -42,8 +42,6 @@ class PersonDetectControlNode(Node):
         self.declare_parameter("notify_port", 8091)
 
         # behavior
-        self.declare_parameter("start_enabled", False)
-        self.declare_parameter("fail_safe_disable", True)
         self.declare_parameter("log_region_match", True)
 
         self.robot_pose_topic = str(self.get_parameter("robot_pose_topic").value)
@@ -52,8 +50,6 @@ class PersonDetectControlNode(Node):
         self.notify_host = str(self.get_parameter("notify_host").value)
         self.notify_port = int(self.get_parameter("notify_port").value)
 
-        self.start_enabled = bool(self.get_parameter("start_enabled").value)
-        self.fail_safe_disable = bool(self.get_parameter("fail_safe_disable").value)
         self.log_region_match = bool(self.get_parameter("log_region_match").value)
 
         self.lock = threading.Lock()
@@ -92,13 +88,12 @@ class PersonDetectControlNode(Node):
         )
         self.http_thread.start()
 
-        self.publish_enable(self.start_enabled, reason="startup")
-
         self.get_logger().info(
             f"[INIT] PersonDetectControlNode | "
             f"robot_pose={self.robot_pose_topic} | "
             f"enable_topic={self.enable_topic} | "
-            f"notify_http={self.notify_host}:{self.notify_port}"
+            f"notify_http={self.notify_host}:{self.notify_port} | "
+            f"startup_publish=disabled_until_first_config"
         )
 
     # =========================
@@ -113,7 +108,6 @@ class PersonDetectControlNode(Node):
             if req.yolo_mode not in [0, 1, 2]:
                 raise HTTPException(status_code=400, detail="invalid yolo_mode")
 
-            # normalize regions
             normalized_regions: List[Dict[str, Any]] = []
             for r in req.regions:
                 x1 = min(r.x_min, r.x_max)
@@ -201,7 +195,7 @@ class PersonDetectControlNode(Node):
             regions = list(self.enabled_regions)
 
         for region in regions:
-            if int(region.get("is_enabled", 1)) != 1:
+            if not bool(region.get("is_enabled", True)):
                 continue
             if self.point_in_region(x, y, region):
                 return region
@@ -211,21 +205,16 @@ class PersonDetectControlNode(Node):
     # Enable logic
     # =========================
 
-    def compute_enable(self) -> Tuple[bool, Optional[str], str]:
+    def compute_enable(self) -> Tuple[Optional[bool], Optional[str], str]:
         with self.lock:
             pose = self.current_pose
             yolo_mode = self.yolo_mode
             run_yolo_hint = self.run_yolo_hint
             config_ok = self.last_config_ok
 
+        # 서버 config 오기 전에는 publish 안 함
         if not config_ok:
-            if self.fail_safe_disable:
-                return False, None, "config_not_received"
-            return (
-                bool(self.last_enable) if self.last_enable is not None else False,
-                None,
-                "config_not_received_hold",
-            )
+            return None, None, "config_not_received_no_publish"
 
         if yolo_mode == 0:
             return False, None, "mode_off"
@@ -256,6 +245,9 @@ class PersonDetectControlNode(Node):
 
     def evaluate_enable(self):
         enable, region_name, reason = self.compute_enable()
+
+        if enable is None:
+            return
 
         if self.last_enable is None or self.last_enable != enable:
             self.publish_enable(enable, reason=reason)

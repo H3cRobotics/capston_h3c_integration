@@ -20,7 +20,6 @@ def generate_launch_description():
     config = LaunchConfiguration('config')
 
     server_ip = LaunchConfiguration('server_ip')
-
     server_url = ['http://', server_ip, ':8000/person_event']
 
     notify_host = LaunchConfiguration('notify_host')
@@ -75,8 +74,6 @@ def generate_launch_description():
                     'enable_topic': '/person_tracking/enable',
                     'notify_host': notify_host,
                     'notify_port': notify_port,
-                    'start_enabled': False,
-                    'fail_safe_disable': True,
                     'log_region_match': True,
                 }
             ],
@@ -92,7 +89,7 @@ def generate_launch_description():
                     'tracks_topic': '/person_tracking/tracks_json',
                     'annotated_topic': '/person_tracking/annotated',
                     'robot_pose_topic': '/robot_pose',
-                    'server_url': server_url,  
+                    'server_url': server_url,
                 }
             ],
         ),
