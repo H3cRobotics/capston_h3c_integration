@@ -22,7 +22,6 @@ gst-inspect-1.0 nvv4l2h264enc
 python3 -c "import gi; from gi.repository import Gst; Gst.init(None); print('gst ok')"
 """
 
-# webrtc_sender.py
 
 import sys
 import threading
