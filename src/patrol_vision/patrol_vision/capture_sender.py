@@ -33,7 +33,7 @@ for d in /dev/video0 /dev/video1 /dev/video2 /dev/video3 /dev/video4 /dev/video5
 done
 """
 
-N_FRAMES = 5
+N_FRAMES = 3
 SAMPLE_DT = 0.2
 
 CAPTURE_TIMEOUT_S = 5.0
