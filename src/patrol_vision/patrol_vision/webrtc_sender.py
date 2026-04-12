@@ -456,12 +456,14 @@ class WebRTCSender:
             self.webrtc.set_property("bundle-policy", "max-bundle")
             self.webrtc.set_property("stun-server", self.stun_server)
 
-            elems += [h264parse, capsfilter_h264, pay, capsfilter_rtp, self.webrtc]
+            elems = [self.appsrc, queue, videoconvert, capsfilter_i420]
+
             if self.use_hw_encoder:
                 elems += [nvvidconv, capsfilter_nv12, encoder]
             else:
                 elems += [encoder]
-            elems += [h264parse, capsfilter_h264, pay, self.webrtc]
+
+            elems += [h264parse, capsfilter_h264, pay, capsfilter_rtp, self.webrtc]
 
             for elem in elems:
                 try:
