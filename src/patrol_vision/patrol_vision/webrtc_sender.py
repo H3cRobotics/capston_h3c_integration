@@ -20,9 +20,17 @@ sudo apt-get install -y \
 gst-inspect-1.0 webrtcbin
 gst-inspect-1.0 nvv4l2h264enc
 python3 -c "import gi; from gi.repository import Gst; Gst.init(None); print('gst ok')"
+
+cd ~/capston_h3c_integration
+rm -rf build install log
+colcon build --symlink-install
+source install/setup.bash
+ros2 launch capston_bringup bringup_all.launch.py
 """
 
+# webrtc_sender.py
 
+import os
 import sys
 import threading
 import time
@@ -33,6 +41,9 @@ import numpy as np
 import requests
 
 sys.stdout.reconfigure(line_buffering=True)
+print("######## NEW WEBRTC CODE ########", flush=True)
+print("FILE =", __file__, flush=True)
+print("CWD =", os.getcwd(), flush=True)
 
 import rclpy
 from rclpy.node import Node
@@ -159,9 +170,7 @@ class WebRTCSender:
 
         self.loop: Optional[GLib.MainLoop] = None
         self.pipeline = None
-        self.media_bin = None
         self.appsrc = None
-        self.pay = None
         self.webrtc = None
         self.webrtc_sink_pad = None
 
@@ -230,7 +239,7 @@ class WebRTCSender:
             print("[WebRTC] glib loop quit error:", repr(e))
 
     # =========================================================
-    # ROS
+    # ROS subscriber
     # =========================================================
     def _start_ros_subscriber(self):
         self._ros_node = _WebRTCImageSubscriber(self, self.image_topic)
@@ -260,34 +269,13 @@ class WebRTCSender:
             print("[WebRTC] GLib loop error:", repr(e))
 
     # =========================================================
-    # GStreamer
+    # GStreamer helpers
     # =========================================================
-    def _media_bin_string(self) -> str:
-        if self.use_hw_encoder:
-            enc = (
-                f"videoconvert ! video/x-raw,format=I420 "
-                f"! nvvidconv "
-                f"! video/x-raw(memory:NVMM),format=NV12 "
-                f"! nvv4l2h264enc bitrate={self.bitrate} "
-                f"insert-sps-pps=true iframeinterval={self.fps} idrinterval={self.fps} "
-                f"control-rate=1 preset-level=1 maxperf-enable=1 "
-            )
-        else:
-            kbps = max(1, self.bitrate // 1000)
-            enc = (
-                f"videoconvert "
-                f"! x264enc tune=zerolatency speed-preset=ultrafast "
-                f"bitrate={kbps} key-int-max={self.fps} "
-            )
-
-        return (
-            f'appsrc name=src is-live=true block=false format=time do-timestamp=true '
-            f'caps=video/x-raw,format=BGR,width={self.width},height={self.height},framerate={self.fps}/1 '
-            f'! queue leaky=downstream max-size-buffers=1 '
-            f'! {enc} '
-            f'! h264parse config-interval=-1 '
-            f'! rtph264pay name=pay pt=96 config-interval=1'
-        )
+    def _make_element(self, factory_name: str, name: str):
+        elem = Gst.ElementFactory.make(factory_name, name)
+        if elem is None:
+            raise RuntimeError(f"failed to create element: {factory_name} ({name})")
+        return elem
 
     def _cleanup_old_pipeline(self):
         if self.pipeline is not None:
@@ -297,9 +285,7 @@ class WebRTCSender:
                 print("[WebRTC] old pipeline shutdown failed:", repr(e))
 
         self.pipeline = None
-        self.media_bin = None
         self.appsrc = None
-        self.pay = None
         self.webrtc = None
         self.webrtc_sink_pad = None
 
@@ -328,6 +314,9 @@ class WebRTCSender:
 
         return pad
 
+    # =========================================================
+    # GStreamer pipeline
+    # =========================================================
     def _build_pipeline(self):
         with self._session_lock:
             self._answer_ready_event.clear()
@@ -335,49 +324,126 @@ class WebRTCSender:
 
             self._cleanup_old_pipeline()
 
-            media_str = self._media_bin_string()
-            print("[WebRTC] creating GStreamer media bin:")
-            print(media_str)
+            print("[WebRTC] creating manual GStreamer pipeline")
 
             self.pipeline = Gst.Pipeline.new("webrtc-pipeline")
             if self.pipeline is None:
                 raise RuntimeError("failed to create Gst.Pipeline")
 
-            self.media_bin = Gst.parse_bin_from_description(media_str, True)
-            if self.media_bin is None:
-                raise RuntimeError("failed to create media bin from description")
+            self.appsrc = self._make_element("appsrc", "src")
+            queue = self._make_element("queue", "queue0")
+            videoconvert = self._make_element("videoconvert", "videoconvert0")
+            capsfilter_i420 = self._make_element("capsfilter", "capsfilter_i420")
 
-            self.webrtc = Gst.ElementFactory.make("webrtcbin", "webrtc")
-            if self.webrtc is None:
-                raise RuntimeError("failed to create webrtcbin")
+            capsfilter_i420.set_property(
+                "caps",
+                Gst.Caps.from_string("video/x-raw,format=I420")
+            )
 
+            if self.use_hw_encoder:
+                nvvidconv = self._make_element("nvvidconv", "nvvidconv0")
+                capsfilter_nv12 = self._make_element("capsfilter", "capsfilter_nv12")
+                capsfilter_nv12.set_property(
+                    "caps",
+                    Gst.Caps.from_string("video/x-raw(memory:NVMM),format=NV12")
+                )
+
+                encoder = self._make_element("nvv4l2h264enc", "encoder0")
+                encoder.set_property("bitrate", self.bitrate)
+                encoder.set_property("insert-sps-pps", True)
+                encoder.set_property("iframeinterval", self.fps)
+                encoder.set_property("idrinterval", self.fps)
+                encoder.set_property("control-rate", 1)
+                encoder.set_property("preset-level", 1)
+                encoder.set_property("maxperf-enable", 1)
+            else:
+                nvvidconv = None
+                capsfilter_nv12 = None
+
+                encoder = self._make_element("x264enc", "encoder0")
+                encoder.set_property("tune", "zerolatency")
+                encoder.set_property("speed-preset", "ultrafast")
+                encoder.set_property("bitrate", max(1, self.bitrate // 1000))
+                encoder.set_property("key-int-max", self.fps)
+
+            h264parse = self._make_element("h264parse", "h264parse0")
+            h264parse.set_property("config-interval", -1)
+
+            pay = self._make_element("rtph264pay", "pay")
+            pay.set_property("pt", 96)
+            pay.set_property("config-interval", 1)
+
+            self.webrtc = self._make_element("webrtcbin", "webrtc")
             self.webrtc.set_property("bundle-policy", "max-bundle")
             self.webrtc.set_property("stun-server", self.stun_server)
 
-            if not self.pipeline.add(self.media_bin):
-                raise RuntimeError("failed to add media bin to pipeline")
+            elems = [self.appsrc, queue, videoconvert, capsfilter_i420]
+            if self.use_hw_encoder:
+                elems += [nvvidconv, capsfilter_nv12, encoder]
+            else:
+                elems += [encoder]
+            elems += [h264parse, pay, self.webrtc]
 
-            if not self.pipeline.add(self.webrtc):
-                raise RuntimeError("failed to add webrtcbin to pipeline")
+            for elem in elems:
+                if not self.pipeline.add(elem):
+                    raise RuntimeError(f"failed to add element to pipeline: {elem.get_name()}")
 
-            self.appsrc = self.media_bin.get_by_name("src")
-            self.pay = self.media_bin.get_by_name("pay")
+            self.appsrc.set_property(
+                "caps",
+                Gst.Caps.from_string(
+                    f"video/x-raw,format=BGR,width={self.width},height={self.height},framerate={self.fps}/1"
+                )
+            )
+            self.appsrc.set_property("is-live", True)
+            self.appsrc.set_property("block", False)
+            self.appsrc.set_property("format", Gst.Format.TIME)
+            self.appsrc.set_property("do-timestamp", True)
 
-            if self.appsrc is None:
-                raise RuntimeError("failed to get appsrc named 'src'")
-            if self.pay is None:
-                raise RuntimeError("failed to get rtph264pay named 'pay'")
+            queue.set_property("leaky", 2)  # downstream
+            queue.set_property("max-size-buffers", 1)
 
-            pay_src_pad = self.pay.get_static_pad("src")
-            if pay_src_pad is None:
-                raise RuntimeError("failed to get pay src pad")
+            if not self.appsrc.link(queue):
+                raise RuntimeError("failed to link appsrc -> queue")
+            if not queue.link(videoconvert):
+                raise RuntimeError("failed to link queue -> videoconvert")
+            if not videoconvert.link(capsfilter_i420):
+                raise RuntimeError("failed to link videoconvert -> capsfilter_i420")
 
-            # webrtcbin이 pad 요청 받을 준비를 하도록 먼저 READY/PAUSED로 올림
+            if self.use_hw_encoder:
+                if not capsfilter_i420.link(nvvidconv):
+                    raise RuntimeError("failed to link capsfilter_i420 -> nvvidconv")
+                if not nvvidconv.link(capsfilter_nv12):
+                    raise RuntimeError("failed to link nvvidconv -> capsfilter_nv12")
+                if not capsfilter_nv12.link(encoder):
+                    raise RuntimeError("failed to link capsfilter_nv12 -> encoder")
+            else:
+                if not capsfilter_i420.link(encoder):
+                    raise RuntimeError("failed to link capsfilter_i420 -> encoder")
+
+            if not encoder.link(h264parse):
+                raise RuntimeError("failed to link encoder -> h264parse")
+            if not h264parse.link(pay):
+                raise RuntimeError("failed to link h264parse -> pay")
+
+            bus = self.pipeline.get_bus()
+            bus.add_signal_watch()
+            bus.connect("message", self._on_bus_message)
+
+            self.webrtc.connect("on-ice-candidate", self._on_ice_candidate)
+            self.webrtc.connect("notify::ice-gathering-state", self._on_ice_gathering_state_changed)
+            self.webrtc.connect("notify::ice-connection-state", self._on_ice_connection_state_changed)
+            self.webrtc.connect("notify::connection-state", self._on_connection_state_changed)
+            self.webrtc.connect("notify::signaling-state", self._on_signaling_state_changed)
+
             ret = self.pipeline.set_state(Gst.State.PAUSED)
             if ret == Gst.StateChangeReturn.FAILURE:
-                raise RuntimeError("failed to set pipeline PAUSED before requesting pad")
+                raise RuntimeError("failed to set pipeline PAUSED before requesting webrtc sink pad")
 
             time.sleep(0.2)
+
+            pay_src_pad = pay.get_static_pad("src")
+            if pay_src_pad is None:
+                raise RuntimeError("failed to get pay src pad")
 
             self.webrtc_sink_pad = self._request_webrtc_sink_pad()
             if self.webrtc_sink_pad is None:
@@ -392,25 +458,6 @@ class WebRTCSender:
             link_ret = pay_src_pad.link(self.webrtc_sink_pad)
             if link_ret != Gst.PadLinkReturn.OK:
                 raise RuntimeError(f"failed to link rtph264pay to webrtcbin: {link_ret}")
-
-            caps = Gst.Caps.from_string(
-                f"video/x-raw,format=BGR,width={self.width},height={self.height},framerate={self.fps}/1"
-            )
-            self.appsrc.set_property("caps", caps)
-            self.appsrc.set_property("is-live", True)
-            self.appsrc.set_property("block", False)
-            self.appsrc.set_property("format", Gst.Format.TIME)
-            self.appsrc.set_property("do-timestamp", True)
-
-            bus = self.pipeline.get_bus()
-            bus.add_signal_watch()
-            bus.connect("message", self._on_bus_message)
-
-            self.webrtc.connect("on-ice-candidate", self._on_ice_candidate)
-            self.webrtc.connect("notify::ice-gathering-state", self._on_ice_gathering_state_changed)
-            self.webrtc.connect("notify::ice-connection-state", self._on_ice_connection_state_changed)
-            self.webrtc.connect("notify::connection-state", self._on_connection_state_changed)
-            self.webrtc.connect("notify::signaling-state", self._on_signaling_state_changed)
 
             ret = self.pipeline.set_state(Gst.State.PLAYING)
             if ret == Gst.StateChangeReturn.FAILURE:
