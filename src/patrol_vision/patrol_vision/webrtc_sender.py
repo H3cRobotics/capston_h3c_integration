@@ -394,6 +394,17 @@ class WebRTCSender:
                 encoder.set_property("control-rate", 1)
                 encoder.set_property("preset-level", 1)
                 encoder.set_property("maxperf-enable", 1)
+
+                # 브라우저/Flutter 쪽 호환성 보강
+                try:
+                    encoder.set_property("profile", 0)   # baseline 시도
+                except Exception as e:
+                    print("[WebRTC] encoder profile=0 set failed:", repr(e))
+
+                try:
+                    encoder.set_property("insert-vui", True)
+                except Exception as e:
+                    print("[WebRTC] encoder insert-vui set failed:", repr(e))
             else:
                 nvvidconv = None
                 capsfilter_nv12 = None
@@ -405,7 +416,15 @@ class WebRTCSender:
                 encoder.set_property("key-int-max", self.fps)
 
             h264parse = self._make_element("h264parse", "h264parse0")
-            h264parse.set_property("config-interval", -1)
+            h264parse.set_property("config-interval", 1)
+
+            capsfilter_h264 = self._make_element("capsfilter", "capsfilter_h264")
+            capsfilter_h264.set_property(
+                "caps",
+                Gst.Caps.from_string(
+                    "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline"
+                )
+            )
 
             pay = self._make_element("rtph264pay", "pay")
             pay.set_property("pt", 96)
@@ -420,7 +439,7 @@ class WebRTCSender:
                 elems += [nvvidconv, capsfilter_nv12, encoder]
             else:
                 elems += [encoder]
-            elems += [h264parse, pay, self.webrtc]
+            elems += [h264parse, capsfilter_h264, pay, self.webrtc]
 
             for elem in elems:
                 try:
@@ -469,8 +488,10 @@ class WebRTCSender:
 
             if not encoder.link(h264parse):
                 raise RuntimeError("failed to link encoder -> h264parse")
-            if not h264parse.link(pay):
-                raise RuntimeError("failed to link h264parse -> pay")
+            if not h264parse.link(capsfilter_h264):
+                raise RuntimeError("failed to link h264parse -> capsfilter_h264")
+            if not capsfilter_h264.link(pay):
+                raise RuntimeError("failed to link capsfilter_h264 -> pay")
 
             bus = self.pipeline.get_bus()
             bus.add_signal_watch()
