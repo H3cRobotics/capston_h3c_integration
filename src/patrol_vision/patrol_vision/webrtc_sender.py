@@ -32,6 +32,9 @@ import cv2
 import numpy as np
 import requests
 
+import sys
+sys.stdout.reconfigure(line_buffering=True)
+
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import SingleThreadedExecutor
