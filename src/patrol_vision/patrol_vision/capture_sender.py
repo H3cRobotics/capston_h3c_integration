@@ -49,6 +49,8 @@ class CaptureSender(Node):
         # -------------------------------
         self.declare_parameter("server_url", "http://127.0.0.1:8000")
         self.declare_parameter("signaling_url", "http://127.0.0.1:8001")
+        self.declare_parameter("image_topic", "/camera/color/image_raw")
+
         self.declare_parameter("n_frames", N_FRAMES)
         self.declare_parameter("sample_dt", SAMPLE_DT)
         self.declare_parameter("capture_timeout_s", CAPTURE_TIMEOUT_S)
@@ -60,6 +62,8 @@ class CaptureSender(Node):
         self.sample_dt = float(self.get_parameter("sample_dt").value)
         self.capture_timeout_s = float(self.get_parameter("capture_timeout_s").value)
         self.post_timeout_s = float(self.get_parameter("post_timeout_s").value)
+        self.image_topic = str(self.get_parameter("image_topic").value)
+
 
         self.get_logger().info(f"server_url     = {self.server_url}")
         self.get_logger().info(f"signaling_url  = {self.signaling_url}")
@@ -72,8 +76,8 @@ class CaptureSender(Node):
         self.buffer = FrameBuffer()
 
         self.webrtc_sender = WebRTCSender(
-            buffer=self.buffer,
             signaling_base_url=self.signaling_url,
+            image_topic=self.image_topic,
         )
         self.webrtc_sender.start()
 
@@ -84,7 +88,7 @@ class CaptureSender(Node):
 
         self.create_subscription(
             Image,
-            "/camera/color/image_raw",
+            self.image_topic,
             self.image_callback,
             10,
         )
