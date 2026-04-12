@@ -1,2 +1,111 @@
 전체 실행
 ros2 launch capston_bringup bringup_all.launch.py
+
+
+
+[INFO] [sound_event_monitor_node-13]: process started with pid [28294]
+[INFO] [person_tracker_node-14]: process started with pid [28297]
+[INFO] [person_detect_control_node-15]: process started with pid [28305]
+[INFO] [person_event_sender_node-16]: process started with pid [28307]
+[respeaker_doa_node-9] [INFO] [1775985968.538607334] [respeaker_doa_node]: respeaker_doa_node started
+[sound_event_monitor_node-13] [INFO] [1775985968.764982590] [sound_event_monitor_node]: sound_event_monitor_node started
+[sound_event_manager_node-11] [INFO] [1775985968.798677935] [sound_event_manager_node]: sound_event_manager_node started
+[robot_goal_sender-5] [INFO] [1775985969.056274149] [robot_goal_sender]: RobotGoalSender started | goal_topic=/goal_pose_2d | next_place_topic=/next_place_id | endpoint=http://192.168.0.16:8000/robot/goal
+[robot_pose_sender-4] [INFO] [1775985969.171878274] [robot_pose_sender]: RobotPoseSender started | topic=/robot_pose | status_topic=/robot_status | endpoint=http://192.168.0.16:8000/robot/pose
+[patrol_command_bridge-7] [INFO] [1775985969.339624543] [patrol_command_bridge]: PatrolCommandBridge started | server=http://192.168.0.16:8000 | waypoints_topic=/patrol/waypoints_json | command_topic=/patrol/command | reload_waypoints_topic=/patrol/reload_waypoints
+[can_teacher_node-6] [INFO] [1775985969.620201340] [can_teacher_node]: CAN bus connected: can0
+[can_teacher_node-6] [ERROR] [1775985969.629297423] [can_teacher_node]: CAN loop error: Error receiving: Network is down [Error Code 100]
+[can_teacher_node-6] [INFO] [1775985969.633428027] [can_teacher_node]: CanTeacherNode started | pose_topic=/robot_pose | server=http://192.168.0.16:8000 | can_if=can0 | teach_can_id=0x102
+[camera_publisher-2] [INFO] [1775985969.894256669] [camera_publisher]: calib_file path : /home/chan/capston_h3c_integration/data/camera_intrinsics.yaml
+[capture_sender-1] [INFO] [1775985970.055363003] [capture_sender]: server_url     = http://192.168.0.16:8000
+[capture_sender-1] [INFO] [1775985970.057405216] [capture_sender]: signaling_url  = http://192.168.0.16:8001
+[capture_sender-1] [INFO] [1775985970.058876113] [capture_sender]: n_frames       = 5
+[capture_sender-1] [INFO] [1775985970.060329890] [capture_sender]: sample_dt      = 0.2
+[capture_sender-1] [INFO] [1775985970.061609581] [capture_sender]: capture_timeout_s = 5.0
+[capture_sender-1] [INFO] [1775985970.062851543] [capture_sender]: post_timeout_s    = 10.0
+[camera_publisher-2] [INFO] [1775985970.089870791] [camera_publisher]: ok: v4l2-ctl -d /dev/v4l/by-id/usb-046d_MX_Brio_2535ZB33GY68-video-index0 --set-ctrl=auto_exposure=3
+[camera_publisher-2] [INFO] [1775985970.097309698] [camera_publisher]: ok: v4l2-ctl -d /dev/v4l/by-id/usb-046d_MX_Brio_2535ZB33GY68-video-index0 --set-ctrl=white_balance_automatic=0
+[camera_publisher-2] [INFO] [1775985970.118759830] [camera_publisher]: ok: v4l2-ctl -d /dev/v4l/by-id/usb-046d_MX_Brio_2535ZB33GY68-video-index0 --set-ctrl=white_balance_temperature=4500
+[camera_publisher-2] [INFO] [1775985970.130921105] [camera_publisher]: ok: v4l2-ctl -d /dev/v4l/by-id/usb-046d_MX_Brio_2535ZB33GY68-video-index0 --set-ctrl=focus_automatic_continuous=0
+[camera_publisher-2] [INFO] [1775985970.131699691] [camera_publisher]: camera resolution: 1920.0 x 1080.0
+[camera_publisher-2] [INFO] [1775985970.132238877] [camera_publisher]: camera fps: 30.0
+[camera_publisher-2] [INFO] [1775985970.166335868] [camera_publisher]: loaded calibration: /home/chan/capston_h3c_integration/data/camera_intrinsics.yaml
+[camera_publisher-2] [INFO] [1775985970.166999922] [camera_publisher]: camera publisher will publish undistorted image
+[camera_publisher-2] [INFO] [1775985970.168042037] [camera_publisher]: camera publisher started
+[capture_sender-1] [WebRTC] start() called
+[capture_sender-1] [WebRTC] signaling_base_url = http://192.168.0.16:8001
+[capture_sender-1] [WebRTC] image_topic = /camera/color/image_raw
+[capture_sender-1] [WebRTC] size = 1280 x 720 fps = 30
+[capture_sender-1] [WebRTC] bitrate = 4000000
+[capture_sender-1] [WebRTC] use_hw_encoder = True
+[capture_sender-1] [WebRTC] GLib loop started
+[capture_sender-1] [WebRTC] creating GStreamer pipeline:
+[capture_sender-1] appsrc name=src is-live=true block=false format=time do-timestamp=true caps=video/x-raw,format=BGR,width=1280,height=720,framerate=30/1 ! queue leaky=downstream max-size-buffers=1 ! videoconvert ! video/x-raw,format=I420 ! nvvidconv ! video/x-raw(memory:NVMM),format=NV12 ! nvv4l2h264enc bitrate=4000000 insert-sps-pps=true iframeinterval=30 idrinterval=30 control-rate=1 preset-level=1 maxperf-enable=1  ! h264parse config-interval=-1 ! rtph264pay name=pay pt=96 config-interval=1 
+[capture_sender-1] Traceback (most recent call last):
+[capture_sender-1]   File "/home/chan/capston_h3c_integration/install/patrol_vision/lib/patrol_vision/capture_sender", line 33, in <module>
+[capture_sender-1]     sys.exit(load_entry_point('patrol-vision==0.0.0', 'console_scripts', 'capture_sender')())
+[capture_sender-1]   File "/home/chan/capston_h3c_integration/install/patrol_vision/lib/python3.10/site-packages/patrol_vision/capture_sender.py", line 192, in main
+[capture_sender-1]     node = CaptureSender()
+[capture_sender-1]   File "/home/chan/capston_h3c_integration/install/patrol_vision/lib/python3.10/site-packages/patrol_vision/capture_sender.py", line 82, in __init__
+[capture_sender-1]     self.webrtc_sender.start()
+[capture_sender-1]   File "/home/chan/capston_h3c_integration/install/patrol_vision/lib/python3.10/site-packages/patrol_vision/webrtc_sender.py", line 206, in start
+[capture_sender-1]     self._build_pipeline()
+[capture_sender-1]   File "/home/chan/capston_h3c_integration/install/patrol_vision/lib/python3.10/site-packages/patrol_vision/webrtc_sender.py", line 357, in _build_pipeline
+[capture_sender-1]     raise RuntimeError("failed to get webrtcbin request sink pad")
+[capture_sender-1] RuntimeError: failed to get webrtcbin request sink pad
+[audio_frontend_node-8] [INFO] [1775985970.466895035] [audio_frontend_node]: Using input device index=0, name="ReSpeaker 4 Mic Array (UAC1.0): USB Audio (hw:0,0)", input_channels=6, channel_index=0, sample_rate=16000
+[audio_frontend_node-8] Expression 'parameters->channelCount <= maxChans' failed in 'src/hostapi/alsa/pa_linux_alsa.c', line: 1514
+[audio_frontend_node-8] Expression 'ValidateParameters( inputParameters, hostApi, StreamDirection_In )' failed in 'src/hostapi/alsa/pa_linux_alsa.c', line: 2818
+[clip_transfer_node-12] [INFO] [1775985970.491555931] [clip_transfer_node]: clip_transfer_node started | server_url=http://192.168.0.16:8000 | pose_topic=/robot_pose
+[audio_frontend_node-8] Traceback (most recent call last):
+[audio_frontend_node-8]   File "/home/chan/capston_h3c_integration/install/security_audio_frontend/lib/security_audio_frontend/audio_frontend_node", line 33, in <module>
+[audio_frontend_node-8]     sys.exit(load_entry_point('security-audio-frontend==0.0.1', 'console_scripts', 'audio_frontend_node')())
+[audio_frontend_node-8]   File "/home/chan/capston_h3c_integration/install/security_audio_frontend/lib/python3.10/site-packages/security_audio_frontend/audio_frontend_node.py", line 258, in main
+[audio_frontend_node-8]     node = AudioFrontendNode()
+[audio_frontend_node-8]   File "/home/chan/capston_h3c_integration/install/security_audio_frontend/lib/python3.10/site-packages/security_audio_frontend/audio_frontend_node.py", line 96, in __init__
+[audio_frontend_node-8]     self.start_audio_stream()
+[audio_frontend_node-8]   File "/home/chan/capston_h3c_integration/install/security_audio_frontend/lib/python3.10/site-packages/security_audio_frontend/audio_frontend_node.py", line 129, in start_audio_stream
+[audio_frontend_node-8]     self.stream = sd.InputStream(
+[audio_frontend_node-8]   File "/home/chan/.local/lib/python3.10/site-packages/sounddevice.py", line 1457, in __init__
+[audio_frontend_node-8]     _StreamBase.__init__(self, kind='input', wrap_callback='array',
+[audio_frontend_node-8]   File "/home/chan/.local/lib/python3.10/site-packages/sounddevice.py", line 914, in __init__
+[audio_frontend_node-8]     _check(_lib.Pa_OpenStream(self._ptr, iparameters, oparameters,
+[audio_frontend_node-8]   File "/home/chan/.local/lib/python3.10/site-packages/sounddevice.py", line 2838, in _check
+[audio_frontend_node-8]     raise PortAudioError(errormsg, err)
+[audio_frontend_node-8] sounddevice.PortAudioError: Error opening InputStream: Invalid number of channels [PaErrorCode -9998]
+[person_event_sender_node-16] [INFO] [1775985970.619510202] [person_event_sender_node]: [INIT] PersonEventSenderNode | tracks=/person_tracking/tracks_json | annotated=/person_tracking/annotated | robot_pose=/robot_pose
+[patrol_http_bridge-3] INFO:     Started server process [28260]
+[patrol_http_bridge-3] INFO:     Waiting for application startup.
+[patrol_http_bridge-3] INFO:     Application startup complete.
+[patrol_http_bridge-3] ERROR:    [Errno 98] error while attempting to bind on address ('0.0.0.0', 8090): address already in use
+[patrol_http_bridge-3] INFO:     Waiting for application shutdown.
+[patrol_http_bridge-3] INFO:     Application shutdown complete.
+[patrol_http_bridge-3] [INFO] [1775985970.868452875] [patrol_http_bridge]: HTTP bridge ready at :8090
+[ERROR] [capture_sender-1]: process has died [pid 28256, exit code 1, cmd '/home/chan/capston_h3c_integration/install/patrol_vision/lib/patrol_vision/capture_sender --ros-args -r __node:=capture_sender --params-file /tmp/launch_params_0e9a98rc'].
+[ERROR] [audio_frontend_node-8]: process has died [pid 28270, exit code 1, cmd '/home/chan/capston_h3c_integration/install/security_audio_frontend/lib/security_audio_frontend/audio_frontend_node --ros-args -r __node:=audio_frontend_node --params-file /home/chan/capston_h3c_integration/install/security_audio_frontend/share/security_audio_frontend/config/frontend.yaml'].
+[person_detect_control_node-15] /opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py:440: UserWarning: when declaring parameter named 'start_enabled', declaring a parameter only providing its name is deprecated. You have to either:
+[person_detect_control_node-15]         - Pass a name and a default value different to "PARAMETER NOT SET" (and optionally a descriptor).
+[person_detect_control_node-15]         - Pass a name and a parameter type.
+[person_detect_control_node-15]         - Pass a name and a descriptor with `dynamic_typing=True
+[person_detect_control_node-15]   warnings.warn(
+[person_detect_control_node-15] INFO:     Started server process [28305]
+[person_detect_control_node-15] INFO:     Waiting for application startup.
+[person_detect_control_node-15] INFO:     Application startup complete.
+[person_detect_control_node-15] INFO:     Uvicorn running on http://0.0.0.0:8091 (Press CTRL+C to quit)
+[person_detect_control_node-15] [INFO] [1775985971.299970798] [person_detect_control_node]: [INIT] PersonDetectControlNode | robot_pose=/robot_pose | enable_topic=/person_tracking/enable | notify_http=0.0.0.0:8091 | startup_publish=disabled_until_first_config
+[person_detect_control_node-15] [INFO] [1775985971.301090356] [person_detect_control_node]: [YOLO ENABLE] True reason=startup_mode_global
+[person_detect_control_node-15] [INFO] [1775985971.301736298] [person_detect_control_node]: Initial state published: True
+[patrol_command_bridge-7] [WARN] [1775985972.376539867] [patrol_command_bridge]: Timeout while fetching patrol waypoints
+[patrol_command_bridge-7] [WARN] [1775985974.382814488] [patrol_command_bridge]: Timeout while fetching patrol command
+[person_tracker_node-14] [INFO] [1775985974.821562863] [person_tracker_node]: Loading YOLO model: /home/chan/capston_h3c_integration/src/patrol_yolo/model/yolov8n.engine
+[person_tracker_node-14] [INFO] [1775985974.850841611] [person_tracker_node]: [MODE] webcam | color_topic=/camera/color/image_raw
+[person_tracker_node-14] [INFO] [1775985974.855558634] [person_tracker_node]: [CONTROL] YOLO inference default=ON
+[person_tracker_node-14] [INFO] [1775985974.857520652] [person_tracker_node]: PersonTrackerNode initialized with worker thread.
+[person_tracker_node-14] /usr/lib/python3/dist-packages/scipy/__init__.py:146: UserWarning: A NumPy version >=1.17.3 and <1.25.0 is required for this version of SciPy (detected version 1.26.4
+[person_tracker_node-14]   warnings.warn(f"A NumPy version >={np_minversion} and <{np_maxversion}"
+[person_tracker_node-14] Loading /home/chan/capston_h3c_integration/src/patrol_yolo/model/yolov8n.engine for TensorRT inference...
+[person_tracker_node-14] [04/12/2026-18:26:16] [TRT] [I] Loaded engine size: 13 MiB
+[person_tracker_node-14] [04/12/2026-18:26:16] [TRT] [I] [MemUsageChange] TensorRT-managed allocation in IExecutionContext creation: CPU +0, GPU +18, now: CPU 0, GPU 30 (MiB)
+[patrol_command_bridge-7] [WARN] [1775985976.390786957] [patrol_command_bridge]: Timeout while fetching patrol command
+[patrol_command_bridge-7] [WARN] [1775985978.397592764] [patrol_command_bridge]: Timeout while fetching patrol command
+[yamnet_classifier_node-10] [INFO] [1775985980.038976318] [yamnet_classifier_node]: worker ready: {"re
