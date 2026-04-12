@@ -410,7 +410,7 @@ class WebRTCSender:
                     encoder.set_property("insert-aud", True)
                 except Exception as e:
                     print("[WebRTC] encoder insert-aud set failed:", repr(e))
-                    
+
             else:
                 nvvidconv = None
                 capsfilter_nv12 = None
@@ -428,7 +428,7 @@ class WebRTCSender:
             capsfilter_h264.set_property(
                 "caps",
                 Gst.Caps.from_string(
-                    "video/x-h264,stream-format=byte-stream,alignment=au,profile=baseline"
+                    "video/x-h264,stream-format=avc,alignment=au,profile=baseline"
                 )
             )
 
