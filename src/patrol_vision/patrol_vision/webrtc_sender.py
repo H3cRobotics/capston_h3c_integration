@@ -28,57 +28,6 @@ gst-inspect-1.0 nvv4l2h264enc
 python3 -c "import gi; from gi.repository import Gst; Gst.init(None); print('gst ok')"
 
 
-))"))
-[capture_sender-1] 🔥🔥 [WebRTC] offer received: type=offer, sdp_len=5336
-[capture_sender-1] ### BUILD PIPELINE THREAD = WebRTC-GLib
-[capture_sender-1] [WebRTC] creating manual GStreamer pipeline
-[capture_sender-1] [INFO] [1775994031.681707942] [capture_sender]: frames_in=736, frames_pushed=1
-[capture_sender-1] [WebRTC] webrtc sink caps = application/x-rtp
-[capture_sender-1] [WebRTC] pay src caps = application/x-rtp, media=(string)video, payload=(int)[ 96, 127 ], clock-rate=(int)90000, encoding-name=(string)H264
-[capture_sender-1] [WebRTC] GStreamer pipeline PLAYING
-[capture_sender-1] 
-[capture_sender-1] (python3:21547): GStreamer-WARNING **: 20:40:31.851: ../gst/gstpad.c:5337:store_sticky_event:<src:src> Sticky event misordering, got 'segment' before 'caps'
-[capture_sender-1] 
-[capture_sender-1] (python3:21547): GStreamer-WARNING **: 20:40:31.851: ../gst/gstpad.c:5337:store_sticky_event:<queue0:sink> Sticky event misordering, got 'segment' before 'caps'
-[capture_sender-1] 
-[capture_sender-1] (python3:21547): GStreamer-WARNING **: 20:40:31.852: ../gst/gstpad.c:5337:store_sticky_event:<queue0:src> Sticky event misordering, got 'segment' before 'caps'
-[capture_sender-1] NvMMLiteOpen : Block : BlockType = 4 
-[capture_sender-1] ===== NvVideo: NVENC =====
-[capture_sender-1] NvMMLiteBlockCreate : Block : BlockType = 4 
-[capture_sender-1] [GStreamer] pipeline state: null -> ready
-[capture_sender-1] [GStreamer] pipeline state: ready -> paused
-[capture_sender-1] [GStreamer] pipeline state: paused -> playing
-[capture_sender-1] [WebRTC] remote description set
-[capture_sender-1] [WebRTC] create-answer emitted
-[capture_sender-1] H264: Profile = 66 Level = 0 
-[capture_sender-1] NVMEDIA: Need to set EMC bandwidth : 376000 
-[capture_sender-1] [WebRTC] signaling-state = have-remote-offer
-[capture_sender-1] [WebRTC] answer created, setting local description
-[capture_sender-1] [WebRTC] signaling-state = stable
-[capture_sender-1] [WebRTC] ice-gathering-state = gathering
-[capture_sender-1] [WebRTC] on-ice-candidate mline=0, candidate_len=56
-[capture_sender-1] [WebRTC] on-ice-candidate mline=0, candidate_len=67
-[capture_sender-1] [WebRTC] on-ice-candidate mline=0, candidate_len=72
-[capture_sender-1] [WebRTC] on-ice-candidate mline=0, candidate_len=69
-[capture_sender-1] [WebRTC] on-ice-candidate mline=0, candidate_len=80
-[capture_sender-1] [WebRTC] on-ice-candidate mline=0, candidate_len=85
-[capture_sender-1] [WebRTC] ice-connection-state = checking
-[capture_sender-1] [WebRTC] connection-state = connecting
-[capture_sender-1] [WebRTC] on-ice-candidate mline=0, candidate_len=83
-[capture_sender-1] [WebRTC] on-ice-candidate mline=0, candidate_len=98
-[capture_sender-1] [WebRTC] ice-gathering-state = complete
-[capture_sender-1] [WebRTC] local answer ready: type=answer, sdp_len=1122
-[capture_sender-1] [WebRTC] answer posted successfully: type=answer, sdp_len=1122
-[capture_sender-1] [WebRTC] ice-connection-state = connected
-[capture_sender-1] [WebRTC] ice-connection-state = completed
-[capture_sender-1] [INFO] [1775994036.721329475] [capture_sender]: frames_in=842, frames_pushed=139
-[capture_sender-1] [INFO] [1775994041.758642733] [capture_sender]: frames_in=950, frames_pushed=273
-[capture_sender-1] [INFO] [1775994046.776549724] [capture_sender]: frames_in=1058, frames_pushed=406
-[capture_sender-1] [INFO] [1775994051.777784547] [capture_sender]: frames_in=1165, frames_pushed=541
-[capture_sender-1] [INFO] [1775994056.828500709] [capture_sender]: frames_in=1271, frames_pushed=679
-[capture_sender-1] [INFO] [1775994061.871249874] [capture_sender]: frames_in=1376, frames_pushed=815
-[capture_sender-1] [INFO] [1775994066.910265779] [capture_sender]: frames_in=1480, frames_pushed=946
-
 """
 
 # webrtc_sender.py
@@ -448,7 +397,7 @@ class WebRTCSender:
 
                 # 브라우저/Flutter 쪽 호환성 보강
                 try:
-                    encoder.set_property("profile", 0)   # baseline 시도
+                    encoder.set_property("profile", 0)   # baseline
                 except Exception as e:
                     print("[WebRTC] encoder profile=0 set failed:", repr(e))
 
@@ -456,6 +405,12 @@ class WebRTCSender:
                     encoder.set_property("insert-vui", True)
                 except Exception as e:
                     print("[WebRTC] encoder insert-vui set failed:", repr(e))
+
+                try:
+                    encoder.set_property("insert-aud", True)
+                except Exception as e:
+                    print("[WebRTC] encoder insert-aud set failed:", repr(e))
+                    
             else:
                 nvvidconv = None
                 capsfilter_nv12 = None
