@@ -22,6 +22,8 @@ gst-inspect-1.0 nvv4l2h264enc
 python3 -c "import gi; from gi.repository import Gst; Gst.init(None); print('gst ok')"
 """
 
+# webrtc_sender.py
+
 import sys
 import threading
 import time
@@ -111,10 +113,6 @@ class _WebRTCImageSubscriber(Node):
 
 
 class WebRTCSender:
-    """
-    Hardware-encoding WebRTC sender.
-    """
-
     def __init__(
         self,
         signaling_base_url: str,
@@ -162,7 +160,9 @@ class WebRTCSender:
 
         self.loop: Optional[GLib.MainLoop] = None
         self.pipeline = None
+        self.media_bin = None
         self.appsrc = None
+        self.pay = None
         self.webrtc = None
         self.webrtc_sink_pad = None
 
@@ -231,7 +231,7 @@ class WebRTCSender:
             print("[WebRTC] glib loop quit error:", repr(e))
 
     # =========================================================
-    # ROS subscriber
+    # ROS
     # =========================================================
     def _start_ros_subscriber(self):
         self._ros_node = _WebRTCImageSubscriber(self, self.image_topic)
@@ -261,9 +261,9 @@ class WebRTCSender:
             print("[WebRTC] GLib loop error:", repr(e))
 
     # =========================================================
-    # GStreamer pipeline
+    # GStreamer
     # =========================================================
-    def _pipeline_string(self) -> str:
+    def _media_bin_string(self) -> str:
         if self.use_hw_encoder:
             enc = (
                 f"videoconvert ! video/x-raw,format=I420 "
@@ -298,34 +298,36 @@ class WebRTCSender:
                 print("[WebRTC] old pipeline shutdown failed:", repr(e))
 
         self.pipeline = None
+        self.media_bin = None
         self.appsrc = None
+        self.pay = None
         self.webrtc = None
         self.webrtc_sink_pad = None
 
     def _request_webrtc_sink_pad(self):
-        webrtc_sink_pad = None
+        pad = None
 
         if hasattr(self.webrtc, "request_pad_simple"):
             try:
-                webrtc_sink_pad = self.webrtc.request_pad_simple("sink_%u")
+                pad = self.webrtc.request_pad_simple("sink_%u")
             except Exception as e:
                 print("[WebRTC] request_pad_simple failed:", repr(e))
 
-        if webrtc_sink_pad is None and hasattr(self.webrtc, "get_request_pad"):
+        if pad is None and hasattr(self.webrtc, "get_request_pad"):
             try:
-                webrtc_sink_pad = self.webrtc.get_request_pad("sink_%u")
+                pad = self.webrtc.get_request_pad("sink_%u")
             except Exception as e:
                 print("[WebRTC] get_request_pad failed:", repr(e))
 
-        if webrtc_sink_pad is None:
+        if pad is None:
             try:
                 templ = self.webrtc.get_pad_template("sink_%u")
                 if templ is not None:
-                    webrtc_sink_pad = self.webrtc.request_pad(templ, None, None)
+                    pad = self.webrtc.request_pad(templ, None, None)
             except Exception as e:
                 print("[WebRTC] request_pad(template) failed:", repr(e))
 
-        return webrtc_sink_pad
+        return pad
 
     def _build_pipeline(self):
         with self._session_lock:
@@ -334,21 +336,17 @@ class WebRTCSender:
 
             self._cleanup_old_pipeline()
 
-            pipeline_str = self._pipeline_string()
-            print("[WebRTC] creating GStreamer pipeline:")
-            print(pipeline_str)
+            media_str = self._media_bin_string()
+            print("[WebRTC] creating GStreamer media bin:")
+            print(media_str)
 
-            self.pipeline = Gst.parse_launch(pipeline_str)
+            self.pipeline = Gst.Pipeline.new("webrtc-pipeline")
             if self.pipeline is None:
-                raise RuntimeError("Gst.parse_launch failed")
+                raise RuntimeError("failed to create Gst.Pipeline")
 
-            self.appsrc = self.pipeline.get_by_name("src")
-            pay = self.pipeline.get_by_name("pay")
-
-            if self.appsrc is None:
-                raise RuntimeError("failed to get appsrc named 'src'")
-            if pay is None:
-                raise RuntimeError("failed to get rtph264pay named 'pay'")
+            self.media_bin = Gst.parse_bin_from_description(media_str, True)
+            if self.media_bin is None:
+                raise RuntimeError("failed to create media bin from description")
 
             self.webrtc = Gst.ElementFactory.make("webrtcbin", "webrtc")
             if self.webrtc is None:
@@ -357,22 +355,34 @@ class WebRTCSender:
             self.webrtc.set_property("bundle-policy", "max-bundle")
             self.webrtc.set_property("stun-server", self.stun_server)
 
-            added = self.pipeline.add(self.webrtc)
-            if not added:
+            if not self.pipeline.add(self.media_bin):
+                raise RuntimeError("failed to add media bin to pipeline")
+
+            if not self.pipeline.add(self.webrtc):
                 raise RuntimeError("failed to add webrtcbin to pipeline")
 
-            self.pipeline.set_state(Gst.State.PAUSED)
-            time.sleep(0.2)
+            self.appsrc = self.media_bin.get_by_name("src")
+            self.pay = self.media_bin.get_by_name("pay")
 
-            pay_src_pad = pay.get_static_pad("src")
+            if self.appsrc is None:
+                raise RuntimeError("failed to get appsrc named 'src'")
+            if self.pay is None:
+                raise RuntimeError("failed to get rtph264pay named 'pay'")
+
+            pay_src_pad = self.pay.get_static_pad("src")
             if pay_src_pad is None:
                 raise RuntimeError("failed to get pay src pad")
 
+            # webrtcbin이 pad 요청 받을 준비를 하도록 먼저 READY/PAUSED로 올림
+            ret = self.pipeline.set_state(Gst.State.PAUSED)
+            if ret == Gst.StateChangeReturn.FAILURE:
+                raise RuntimeError("failed to set pipeline PAUSED before requesting pad")
+
+            time.sleep(0.2)
+
             self.webrtc_sink_pad = self._request_webrtc_sink_pad()
-
             if self.webrtc_sink_pad is None:
-                raise RuntimeError("failed to request webrtcbin sink pad")
-
+                raise RuntimeError("failed to request webrtc sink pad")
 
             sink_caps = self.webrtc_sink_pad.query_caps(None)
             print("[WebRTC] webrtc sink caps =", sink_caps.to_string() if sink_caps else "None")
@@ -406,11 +416,6 @@ class WebRTCSender:
             ret = self.pipeline.set_state(Gst.State.PLAYING)
             if ret == Gst.StateChangeReturn.FAILURE:
                 raise RuntimeError("failed to set pipeline PLAYING")
-
-            try:
-                self.webrtc.sync_state_with_parent()
-            except Exception as e:
-                print("[WebRTC] sync_state_with_parent failed:", repr(e))
 
             print("[WebRTC] GStreamer pipeline PLAYING")
 
@@ -468,7 +473,6 @@ class WebRTCSender:
                 print(f"🔥🔥 [WebRTC] offer received: type={sdp_type}, sdp_len={len(sdp)}", flush=True)
 
                 self._build_pipeline()
-
                 self._set_remote_description(sdp, sdp_type)
                 self._create_answer()
 
@@ -487,10 +491,7 @@ class WebRTCSender:
                         f"sender_answer failed: status={r.status_code}, body={r.text[:300]}"
                     )
 
-                print(
-                    f"[WebRTC] answer posted successfully: "
-                    f"type={local_type}, sdp_len={len(local_sdp)}"
-                )
+                print(f"[WebRTC] answer posted successfully: type={local_type}, sdp_len={len(local_sdp)}")
 
             except Exception as e:
                 print("[WebRTC] signaling worker error:", repr(e))
@@ -514,9 +515,7 @@ class WebRTCSender:
         if res != GstSdp.SDPResult.OK:
             raise RuntimeError(f"failed to create SDP message: {res}")
 
-        parse_res = GstSdp.sdp_message_parse_buffer(
-            bytes(sdp_text.encode("utf-8")), sdpmsg
-        )
+        parse_res = GstSdp.sdp_message_parse_buffer(bytes(sdp_text.encode("utf-8")), sdpmsg)
         if parse_res != GstSdp.SDPResult.OK:
             raise RuntimeError(f"failed to parse remote SDP: {parse_res}")
 
@@ -588,10 +587,7 @@ class WebRTCSender:
             self._local_answer = (sdp_text, sdp_type)
             self._answer_ready_event.set()
 
-            print(
-                f"[WebRTC] local answer ready: type={sdp_type}, "
-                f"sdp_len={len(sdp_text)}"
-            )
+            print(f"[WebRTC] local answer ready: type={sdp_type}, sdp_len={len(sdp_text)}")
 
         except Exception as e:
             print("[WebRTC] _wait_for_complete_local_description failed:", repr(e))
@@ -600,10 +596,7 @@ class WebRTCSender:
     # GStreamer callbacks
     # =========================================================
     def _on_ice_candidate(self, element, mlineindex, candidate):
-        print(
-            f"[WebRTC] on-ice-candidate mline={mlineindex}, "
-            f"candidate_len={len(candidate)}"
-        )
+        print(f"[WebRTC] on-ice-candidate mline={mlineindex}, candidate_len={len(candidate)}")
 
     def _on_ice_gathering_state_changed(self, element, _pspec):
         try:
@@ -650,13 +643,10 @@ class WebRTCSender:
         elif msg_type == Gst.MessageType.STATE_CHANGED:
             if message.src == self.pipeline:
                 old_state, new_state, pending = message.parse_state_changed()
-                print(
-                    f"[GStreamer] pipeline state: "
-                    f"{old_state.value_nick} -> {new_state.value_nick}"
-                )
+                print(f"[GStreamer] pipeline state: {old_state.value_nick} -> {new_state.value_nick}")
 
     # =========================================================
-    # utils
+    # Utils
     # =========================================================
     def _enum_nick(self, enum_val) -> str:
         try:
