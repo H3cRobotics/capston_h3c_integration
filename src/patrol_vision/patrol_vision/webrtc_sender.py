@@ -295,20 +295,19 @@ class WebRTCSender:
             kbps = max(1, self.bitrate // 1000)
             enc = (
                 f"videoconvert "
-                f"! x264enc tune=zerolatency speed-preset=ultrafast bitrate={kbps} key-int-max={self.fps} "
+                f"! x264enc tune=zerolatency speed-preset=ultrafast "
+                f"bitrate={kbps} key-int-max={self.fps} "
             )
 
         return (
-            f'webrtcbin name=webrtc bundle-policy=max-bundle stun-server="{self.stun_server}" '
             f'appsrc name=src is-live=true block=false format=time do-timestamp=true '
             f'caps=video/x-raw,format=BGR,width={self.width},height={self.height},framerate={self.fps}/1 '
             f'! queue leaky=downstream max-size-buffers=1 '
             f'! {enc} '
             f'! h264parse config-interval=-1 '
-            f'! rtph264pay pt=96 config-interval=1 '
-            f'! webrtc.'
+            f'! rtph264pay name=pay pt=96 config-interval=1'
         )
-    
+        
     def _build_pipeline(self):
         with self._session_lock:
             self._answer_ready_event.clear()
@@ -320,6 +319,10 @@ class WebRTCSender:
                 except Exception as e:
                     print("[WebRTC] old pipeline shutdown failed:", repr(e))
 
+            self.pipeline = None
+            self.appsrc = None
+            self.webrtc = None
+
             pipeline_str = self._pipeline_string()
             print("[WebRTC] creating GStreamer pipeline:")
             print(pipeline_str)
@@ -329,12 +332,37 @@ class WebRTCSender:
                 raise RuntimeError("Gst.parse_launch failed")
 
             self.appsrc = self.pipeline.get_by_name("src")
-            self.webrtc = self.pipeline.get_by_name("webrtc")
+            pay = self.pipeline.get_by_name("pay")
 
             if self.appsrc is None:
                 raise RuntimeError("failed to get appsrc named 'src'")
+            if pay is None:
+                raise RuntimeError("failed to get rtph264pay named 'pay'")
+
+            self.webrtc = Gst.ElementFactory.make("webrtcbin", "webrtc")
             if self.webrtc is None:
-                raise RuntimeError("failed to get webrtcbin named 'webrtc'")
+                raise RuntimeError("failed to create webrtcbin")
+
+            self.webrtc.set_property("bundle-policy", "max-bundle")
+            self.webrtc.set_property("stun-server", self.stun_server)
+
+            self.pipeline.add(self.webrtc)
+
+            pay_src_pad = pay.get_static_pad("src")
+            if pay_src_pad is None:
+                raise RuntimeError("failed to get pay src pad")
+
+            templ = self.webrtc.get_pad_template("sink_%u")
+            if templ is None:
+                raise RuntimeError("webrtcbin sink_%u pad template not found")
+
+            webrtc_sink_pad = self.webrtc.request_pad(templ, None, None)
+            if webrtc_sink_pad is None:
+                raise RuntimeError("failed to request webrtcbin sink pad")
+
+            link_ret = pay_src_pad.link(webrtc_sink_pad)
+            if link_ret != Gst.PadLinkReturn.OK:
+                raise RuntimeError(f"failed to link rtph264pay to webrtcbin: {link_ret}")
 
             caps = Gst.Caps.from_string(
                 f"video/x-raw,format=BGR,width={self.width},height={self.height},framerate={self.fps}/1"
