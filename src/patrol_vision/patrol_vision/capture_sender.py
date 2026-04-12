@@ -76,8 +76,8 @@ class CaptureSender(Node):
         self.buffer = FrameBuffer()
 
         self.webrtc_sender = WebRTCSender(
+            buffer=self.buffer,
             signaling_base_url=self.signaling_url,
-            image_topic=self.image_topic,
         )
         self.webrtc_sender.start()
 

@@ -1,804 +1,196 @@
 # webrtc_sender.py
-
-"""
-필수 패키지
-
-sudo apt-get update
-
-sudo apt-get install -y \
-  python3-gi \
-  python3-gst-1.0 \
-  gstreamer1.0-tools \
-  gstreamer1.0-plugins-base \
-  gstreamer1.0-plugins-good \
-  gstreamer1.0-plugins-bad \
-  gstreamer1.0-plugins-ugly \
-  gstreamer1.0-libav \
-  python3-requests
-
-sudo apt-get update
-sudo apt-get install -y \
-  libnice10 \
-  gstreamer1.0-nice \
-  gstreamer1.0-plugins-bad
-
-확인
-gst-inspect-1.0 webrtcbin
-gst-inspect-1.0 nvv4l2h264enc
-python3 -c "import gi; from gi.repository import Gst; Gst.init(None); print('gst ok')"
-
-
-"""
-
-# webrtc_sender.py
-
-import os
-import sys
+import asyncio
 import threading
-import time
-from typing import Optional, Tuple, Any, Callable
+from typing import Optional
 
 import cv2
 import numpy as np
+from av import VideoFrame
+from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack
 import requests
 
-sys.stdout.reconfigure(line_buffering=True)
-print("######## NEW WEBRTC CODE ########", flush=True)
-print("FILE =", __file__, flush=True)
-print("CWD =", os.getcwd(), flush=True)
 
-import rclpy
-from rclpy.node import Node
-from rclpy.executors import SingleThreadedExecutor
-from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
+class BufferVideoTrack(VideoStreamTrack):
+    def __init__(self, buffer):
+        super().__init__()
+        self.buffer = buffer
+        self._last_frame: Optional[np.ndarray] = None
 
-import gi
-gi.require_version("Gst", "1.0")
-gi.require_version("GstWebRTC", "1.0")
-gi.require_version("GstSdp", "1.0")
-
-from gi.repository import Gst, GstWebRTC, GstSdp, GLib
-
-
-class _WebRTCImageSubscriber(Node):
-    def __init__(self, owner: "WebRTCSender", image_topic: str):
-        super().__init__("webrtc_sender_subscriber")
-        self.owner = owner
-        self.bridge = CvBridge()
-
-        self.sub = self.create_subscription(
-            Image,
-            image_topic,
-            self.image_callback,
-            10,
-        )
-
-        self.timer = self.create_timer(
-            1.0 / float(self.owner.fps),
-            self.push_timer_callback,
-        )
-
-    def image_callback(self, msg: Image):
-        try:
-            frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-        except Exception as e:
-            self.get_logger().warning(f"cv_bridge failed: {repr(e)}")
-            return
-
-        if frame is None:
-            return
-
-        if self.owner.resize_enabled:
-            if frame.shape[1] != self.owner.width or frame.shape[0] != self.owner.height:
-                frame = cv2.resize(
-                    frame,
-                    (self.owner.width, self.owner.height),
-                    interpolation=cv2.INTER_AREA,
-                )
-
-        with self.owner._frame_lock:
-            self.owner._latest_bgr = frame.copy()
-            self.owner._latest_stamp_ns = time.time_ns()
-            self.owner._frame_in_count += 1
-
-    def push_timer_callback(self):
-        with self.owner._frame_lock:
-            if (
-                self.owner._latest_bgr is None
-                or self.owner.appsrc is None
-                or not self.owner._pipeline_ready
-            ):
-                return
-            frame = self.owner._latest_bgr
-            stamp_ns = self.owner._latest_stamp_ns
+    async def recv(self):
+        pts, time_base = await self.next_timestamp()
 
         try:
-            self.owner._push_frame(frame, stamp_ns)
-            self.owner._frame_push_count += 1
-        except Exception as e:
-            self.get_logger().warning(f"push_frame failed: {repr(e)}")
+            rgb = await asyncio.to_thread(self.buffer.wait_new, 1.0)
+            self._last_frame = rgb
+        except Exception:
+            rgb = self._last_frame
 
-        now = time.monotonic()
-        if now - self.owner._last_stat_log_t >= 5.0:
-            self.get_logger().info(
-                f"frames_in={self.owner._frame_in_count}, "
-                f"frames_pushed={self.owner._frame_push_count}"
-            )
-            self.owner._last_stat_log_t = now
+        if rgb is None:
+            rgb = np.zeros((720, 1280, 3), dtype=np.uint8)
+
+        rgb = cv2.resize(rgb, (1280, 720), interpolation=cv2.INTER_AREA)
+
+        frame = VideoFrame.from_ndarray(rgb, format="rgb24")
+        frame.pts = pts
+        frame.time_base = time_base
+        return frame
 
 
 class WebRTCSender:
-    def __init__(
-        self,
-        signaling_base_url: str,
-        image_topic: str = "/camera/color/image_raw",
-        width: int = 1280,
-        height: int = 720,
-        fps: int = 30,
-        bitrate: int = 4_000_000,
-        resize: bool = True,
-        use_hw_encoder: bool = True,
-        stun_server: str = "stun://stun.l.google.com:19302",
-        poll_interval_sec: float = 1.0,
-    ):
+    def __init__(self, buffer, signaling_base_url: str):
+        self.buffer = buffer
         self.signaling_base_url = signaling_base_url.rstrip("/")
-        self.image_topic = image_topic
-
-        self.width = int(width)
-        self.height = int(height)
-        self.fps = int(fps)
-        self.bitrate = int(bitrate)
-        self.resize_enabled = bool(resize)
-        self.use_hw_encoder = bool(use_hw_encoder)
-        self.stun_server = str(stun_server)
-        self.poll_interval_sec = float(poll_interval_sec)
-
+        self.thread: Optional[threading.Thread] = None
         self.running = False
+        self.pc: Optional[RTCPeerConnection] = None
 
-        self._frame_lock = threading.Lock()
-        self._latest_bgr: Optional[np.ndarray] = None
-        self._latest_stamp_ns: int = 0
-        self._frame_in_count = 0
-        self._frame_push_count = 0
-        self._last_stat_log_t = time.monotonic()
-
-        self._session_lock = threading.Lock()
-        self._answer_ready_event = threading.Event()
-        self._local_answer: Optional[Tuple[str, str]] = None
-
-        self._glib_thread: Optional[threading.Thread] = None
-        self._ros_thread: Optional[threading.Thread] = None
-        self._signaling_thread: Optional[threading.Thread] = None
-
-        self._ros_node: Optional[_WebRTCImageSubscriber] = None
-        self._executor: Optional[SingleThreadedExecutor] = None
-
-        self.loop: Optional[GLib.MainLoop] = None
-        self.pipeline = None
-        self.appsrc = None
-        self.webrtc = None
-        self.webrtc_sink_pad = None
-
-        # 핵심: pipeline 준비 상태 / 수동 PTS
-        self._pipeline_ready = False
-        self._push_pts_ns = 0
-
-        Gst.init(None)
-
-    # =========================================================
-    # Public API
-    # =========================================================
     def start(self):
-        print("🔥🔥 [WebRTC] start() called", flush=True)
+        print("[WebRTC] start() called")
         print("[WebRTC] signaling_base_url =", self.signaling_base_url)
-        print("[WebRTC] image_topic =", self.image_topic)
-        print("[WebRTC] size =", self.width, "x", self.height, "fps =", self.fps)
-        print("[WebRTC] bitrate =", self.bitrate)
-        print("[WebRTC] use_hw_encoder =", self.use_hw_encoder)
 
-        if self.running:
-            print("[WebRTC] already running")
+        if self.thread is not None and self.thread.is_alive():
+            print("[WebRTC] thread already alive")
             return
 
         self.running = True
-
-        self.loop = GLib.MainLoop()
-        self._glib_thread = threading.Thread(
-            target=self._run_glib_loop,
-            daemon=True,
-            name="WebRTC-GLib",
-        )
-        self._glib_thread.start()
-
-        self._start_ros_subscriber()
-
-        self._signaling_thread = threading.Thread(
-            target=self._signaling_worker,
-            daemon=True,
-            name="WebRTC-Signaling",
-        )
-        self._signaling_thread.start()
-
-        print("[WebRTC] started")
+        self.thread = threading.Thread(target=self._thread_main, daemon=True)
+        self.thread.start()
+        print("[WebRTC] thread started")
 
     def stop(self):
         print("[WebRTC] stop() called")
         self.running = False
 
+    def _thread_main(self):
+        print("[WebRTC] _thread_main entered")
         try:
-            if self.appsrc is not None:
-                try:
-                    self.appsrc.emit("end-of-stream")
-                except Exception:
-                    pass
-
-            if self.pipeline is not None:
-                self.pipeline.set_state(Gst.State.NULL)
+            asyncio.run(self._run())
         except Exception as e:
-            print("[WebRTC] pipeline stop error:", repr(e))
-
-        try:
-            if self._executor is not None:
-                self._executor.shutdown()
-        except Exception as e:
-            print("[WebRTC] executor shutdown error:", repr(e))
-
-        try:
-            if self._ros_node is not None:
-                self._ros_node.destroy_node()
-        except Exception as e:
-            print("[WebRTC] ros node destroy error:", repr(e))
-
-        try:
-            if self.loop is not None and self.loop.is_running():
-                self.loop.quit()
-        except Exception as e:
-            print("[WebRTC] glib loop quit error:", repr(e))
-
-    # =========================================================
-    # ROS subscriber
-    # =========================================================
-    def _start_ros_subscriber(self):
-        self._ros_node = _WebRTCImageSubscriber(self, self.image_topic)
-        self._executor = SingleThreadedExecutor()
-        self._executor.add_node(self._ros_node)
-
-        self._ros_thread = threading.Thread(target=self._spin_ros, daemon=True)
-        self._ros_thread.start()
-
-    def _spin_ros(self):
-        print("[WebRTC] ROS subscriber spin started")
-        try:
-            if self._executor is not None:
-                self._executor.spin()
-        except Exception as e:
-            print("[WebRTC] ROS spin error:", repr(e))
-
-    # =========================================================
-    # GLib
-    # =========================================================
-    def _run_glib_loop(self):
-        print("[WebRTC] GLib loop started")
-        try:
-            if self.loop is not None:
-                self.loop.run()
-        except Exception as e:
-            print("[WebRTC] GLib loop error:", repr(e))
-
-    def _run_on_glib(self, fn: Callable, *args, timeout: float = 10.0, **kwargs) -> Any:
-        if self.loop is None:
-            raise RuntimeError("GLib loop is None")
-
-        done = threading.Event()
-        box = {"result": None, "error": None}
-
-        def _wrapper():
-            try:
-                box["result"] = fn(*args, **kwargs)
-            except Exception as e:
-                box["error"] = e
-            finally:
-                done.set()
-            return False
-
-        GLib.idle_add(_wrapper)
-
-        if not done.wait(timeout=timeout):
-            raise TimeoutError(f"GLib task timeout: {getattr(fn, '__name__', str(fn))}")
-
-        if box["error"] is not None:
-            raise box["error"]
-
-        return box["result"]
-
-    # =========================================================
-    # GStreamer helpers
-    # =========================================================
-    def _make_element(self, factory_name: str, name: str):
-        elem = Gst.ElementFactory.make(factory_name, name)
-        if elem is None:
-            raise RuntimeError(f"failed to create element: {factory_name} ({name})")
-        return elem
-
-    def _cleanup_old_pipeline(self):
-        if self.pipeline is not None:
-            try:
-                self.pipeline.set_state(Gst.State.NULL)
-            except Exception as e:
-                print("[WebRTC] old pipeline shutdown failed:", repr(e))
-
-        self.pipeline = None
-        self.appsrc = None
-        self.webrtc = None
-        self.webrtc_sink_pad = None
-        self._pipeline_ready = False
-        self._push_pts_ns = 0
-
-    def _request_webrtc_sink_pad(self):
-        pad = None
-
-        if hasattr(self.webrtc, "request_pad_simple"):
-            try:
-                pad = self.webrtc.request_pad_simple("sink_%u")
-            except Exception as e:
-                print("[WebRTC] request_pad_simple failed:", repr(e))
-
-        if pad is None and hasattr(self.webrtc, "get_request_pad"):
-            try:
-                pad = self.webrtc.get_request_pad("sink_%u")
-            except Exception as e:
-                print("[WebRTC] get_request_pad failed:", repr(e))
-
-        if pad is None:
-            try:
-                templ = self.webrtc.get_pad_template("sink_%u")
-                if templ is not None:
-                    pad = self.webrtc.request_pad(templ, None, None)
-            except Exception as e:
-                print("[WebRTC] request_pad(template) failed:", repr(e))
-
-        return pad
-
-    # =========================================================
-    # GStreamer pipeline
-    # =========================================================
-    def _build_pipeline(self):
-        print("### BUILD PIPELINE THREAD =", threading.current_thread().name, flush=True)
-
-        with self._session_lock:
-            self._answer_ready_event.clear()
-            self._local_answer = None
-
-            self._cleanup_old_pipeline()
-
-            print("[WebRTC] creating manual GStreamer pipeline")
-
-            self.pipeline = Gst.Pipeline.new("webrtc-pipeline")
-            if self.pipeline is None:
-                raise RuntimeError("failed to create Gst.Pipeline")
-
-            self.appsrc = self._make_element("appsrc", "src")
-            queue = self._make_element("queue", "queue0")
-            videoconvert = self._make_element("videoconvert", "videoconvert0")
-            capsfilter_i420 = self._make_element("capsfilter", "capsfilter_i420")
-
-            capsfilter_i420.set_property(
-                "caps",
-                Gst.Caps.from_string("video/x-raw,format=I420")
-            )
-
-            if self.use_hw_encoder:
-                nvvidconv = self._make_element("nvvidconv", "nvvidconv0")
-                capsfilter_nv12 = self._make_element("capsfilter", "capsfilter_nv12")
-                capsfilter_nv12.set_property(
-                    "caps",
-                    Gst.Caps.from_string("video/x-raw(memory:NVMM),format=NV12")
-                )
-
-                encoder = self._make_element("nvv4l2h264enc", "encoder0")
-                encoder.set_property("bitrate", self.bitrate)
-                encoder.set_property("insert-sps-pps", True)
-                encoder.set_property("iframeinterval", self.fps)
-                encoder.set_property("idrinterval", self.fps)
-                encoder.set_property("control-rate", 1)
-                encoder.set_property("preset-level", 1)
-                encoder.set_property("maxperf-enable", 1)
-
-                try:
-                    encoder.set_property("profile", 0)
-                except Exception as e:
-                    print("[WebRTC] encoder profile=0 set failed:", repr(e))
-
-                try:
-                    encoder.set_property("insert-vui", True)
-                except Exception as e:
-                    print("[WebRTC] encoder insert-vui set failed:", repr(e))
-
-                try:
-                    encoder.set_property("insert-aud", True)
-                except Exception as e:
-                    print("[WebRTC] encoder insert-aud set failed:", repr(e))
-            else:
-                nvvidconv = None
-                capsfilter_nv12 = None
-
-                encoder = self._make_element("x264enc", "encoder0")
-                encoder.set_property("tune", "zerolatency")
-                encoder.set_property("speed-preset", "ultrafast")
-                encoder.set_property("bitrate", max(1, self.bitrate // 1000))
-                encoder.set_property("key-int-max", self.fps)
-
-            h264parse = self._make_element("h264parse", "h264parse0")
-            h264parse.set_property("config-interval", 1)
-
-            capsfilter_h264 = self._make_element("capsfilter", "capsfilter_h264")
-            capsfilter_h264.set_property(
-                "caps",
-                Gst.Caps.from_string(
-                    "video/x-h264,stream-format=avc,alignment=au,profile=baseline"
-                )
-            )
-
-            pay = self._make_element("rtph264pay", "pay")
-            pay.set_property("pt", 96)
-            pay.set_property("config-interval", 1)
-
-            capsfilter_rtp = self._make_element("capsfilter", "capsfilter_rtp")
-            capsfilter_rtp.set_property(
-                "caps",
-                Gst.Caps.from_string(
-                    "application/x-rtp,media=video,encoding-name=H264,payload=96"
-                )
-            )
-
-            self.webrtc = self._make_element("webrtcbin", "webrtc")
-            self.webrtc.set_property("bundle-policy", "max-bundle")
-            self.webrtc.set_property("stun-server", self.stun_server)
-
-            elems = [self.appsrc, queue, videoconvert, capsfilter_i420]
-
-            if self.use_hw_encoder:
-                elems += [nvvidconv, capsfilter_nv12, encoder]
-            else:
-                elems += [encoder]
-
-            elems += [h264parse, capsfilter_h264, pay, capsfilter_rtp, self.webrtc]
-
-            for elem in elems:
-                try:
-                    self.pipeline.add(elem)
-                except Exception as e:
-                    raise RuntimeError(f"pipeline.add exception for {elem.get_name()}: {repr(e)}")
-
-                parent = elem.get_parent()
-                if parent is None or parent != self.pipeline:
-                    raise RuntimeError(
-                        f"element was not added to pipeline: {elem.get_name()}, "
-                        f"parent={parent}"
-                    )
-
-            self.appsrc.set_property(
-                "caps",
-                Gst.Caps.from_string(
-                    f"video/x-raw,format=BGR,width={self.width},height={self.height},framerate={self.fps}/1"
-                )
-            )
-            self.appsrc.set_property("is-live", True)
-            self.appsrc.set_property("block", False)
-            self.appsrc.set_property("format", Gst.Format.TIME)
-            self.appsrc.set_property("do-timestamp", False)
-
-            queue.set_property("leaky", 2)
-            queue.set_property("max-size-buffers", 1)
-
-            if not self.appsrc.link(queue):
-                raise RuntimeError("failed to link appsrc -> queue")
-            if not queue.link(videoconvert):
-                raise RuntimeError("failed to link queue -> videoconvert")
-            if not videoconvert.link(capsfilter_i420):
-                raise RuntimeError("failed to link videoconvert -> capsfilter_i420")
-
-            if self.use_hw_encoder:
-                if not capsfilter_i420.link(nvvidconv):
-                    raise RuntimeError("failed to link capsfilter_i420 -> nvvidconv")
-                if not nvvidconv.link(capsfilter_nv12):
-                    raise RuntimeError("failed to link nvvidconv -> capsfilter_nv12")
-                if not capsfilter_nv12.link(encoder):
-                    raise RuntimeError("failed to link capsfilter_nv12 -> encoder")
-            else:
-                if not capsfilter_i420.link(encoder):
-                    raise RuntimeError("failed to link capsfilter_i420 -> encoder")
-
-            if not encoder.link(h264parse):
-                raise RuntimeError("failed to link encoder -> h264parse")
-            if not h264parse.link(capsfilter_h264):
-                raise RuntimeError("failed to link h264parse -> capsfilter_h264")
-            if not capsfilter_h264.link(pay):
-                raise RuntimeError("failed to link capsfilter_h264 -> pay")
-            if not pay.link(capsfilter_rtp):
-                raise RuntimeError("failed to link pay -> capsfilter_rtp")
-
-            bus = self.pipeline.get_bus()
-            bus.add_signal_watch()
-            bus.connect("message", self._on_bus_message)
-
-            self.webrtc.connect("on-ice-candidate", self._on_ice_candidate)
-            self.webrtc.connect("notify::ice-gathering-state", self._on_ice_gathering_state_changed)
-            self.webrtc.connect("notify::ice-connection-state", self._on_ice_connection_state_changed)
-            self.webrtc.connect("notify::connection-state", self._on_connection_state_changed)
-            self.webrtc.connect("notify::signaling-state", self._on_signaling_state_changed)
-
-            pay_src_pad = capsfilter_rtp.get_static_pad("src")
-            if pay_src_pad is None:
-                raise RuntimeError("failed to get capsfilter_rtp src pad")
-
-            self.webrtc_sink_pad = self._request_webrtc_sink_pad()
-            if self.webrtc_sink_pad is None:
-                raise RuntimeError("failed to request webrtc sink pad")
-
-            sink_caps = self.webrtc_sink_pad.query_caps(None)
-            print("[WebRTC] webrtc sink caps =", sink_caps.to_string() if sink_caps else "None")
-
-            pay_caps = pay_src_pad.query_caps(None)
-            print("[WebRTC] pay src caps =", pay_caps.to_string() if pay_caps else "None")
-
-            link_ret = pay_src_pad.link(self.webrtc_sink_pad)
-            if link_ret != Gst.PadLinkReturn.OK:
-                raise RuntimeError(f"failed to link rtph264pay to webrtcbin: {link_ret}")
-
-            ret = self.pipeline.set_state(Gst.State.PLAYING)
-            if ret == Gst.StateChangeReturn.FAILURE:
-                raise RuntimeError("failed to set pipeline PLAYING")
-
-            self._push_pts_ns = 0
-            self._pipeline_ready = True
-
-            print("[WebRTC] GStreamer pipeline PLAYING")
-
-    def _push_frame(self, frame_bgr: np.ndarray, stamp_ns: int):
-        if self.appsrc is None or not self._pipeline_ready:
-            return
-
-        if not frame_bgr.flags["C_CONTIGUOUS"]:
-            frame_bgr = np.ascontiguousarray(frame_bgr)
-
-        data = frame_bgr.tobytes()
-        buf = Gst.Buffer.new_allocate(None, len(data), None)
-        buf.fill(0, data)
-
-        duration_ns = int(1e9 / float(self.fps))
-
-        buf.pts = self._push_pts_ns
-        buf.dts = self._push_pts_ns
-        buf.duration = duration_ns
-
-        self._push_pts_ns += duration_ns
-
-        ret = self.appsrc.emit("push-buffer", buf)
-        if ret != Gst.FlowReturn.OK:
-            raise RuntimeError(f"appsrc push-buffer returned {ret}")
-
-    # =========================================================
-    # Signaling
-    # =========================================================
-    def _signaling_worker(self):
-        print("🔥🔥 [WebRTC] signaling worker started", flush=True)
+            print("[WebRTC] _thread_main fatal error:", repr(e))
+
+    async def _http_get(self, url: str, timeout: float):
+        return await asyncio.to_thread(requests.get, url, timeout=timeout)
+
+    async def _http_post(self, url: str, json_data: dict, timeout: float):
+        return await asyncio.to_thread(
+            requests.post,
+            url,
+            json=json_data,
+            timeout=timeout,
+        )
+
+    async def _run(self):
+        print("[WebRTC] _run loop started")
 
         while self.running:
+            pc = None
             try:
                 poll_url = f"{self.signaling_base_url}/sender_poll"
-                resp = requests.get(poll_url, timeout=35.0)
+                print("[WebRTC] polling:", poll_url)
 
-                if resp.status_code == 404:
-                    time.sleep(self.poll_interval_sec)
-                    continue
+                resp = await self._http_get(poll_url, timeout=35.0)
+                print("[WebRTC] sender_poll status =", resp.status_code)
 
                 if resp.status_code != 200:
-                    print("[WebRTC] sender_poll failed:", resp.status_code, resp.text[:300])
-                    time.sleep(self.poll_interval_sec)
+                    try:
+                        print("[WebRTC] sender_poll body =", resp.text[:300])
+                    except Exception:
+                        pass
+                    await asyncio.sleep(1.0)
                     continue
 
-                offer = resp.json()
-                sdp = offer.get("sdp")
-                sdp_type = offer.get("type")
+                offer_data = resp.json()
+                print("[WebRTC] offer received")
+                print("[WebRTC] offer keys =", list(offer_data.keys()))
 
-                if not sdp or not sdp_type:
-                    print("[WebRTC] invalid offer payload:", offer)
-                    time.sleep(self.poll_interval_sec)
+                if "sdp" not in offer_data or "type" not in offer_data:
+                    print("[WebRTC] invalid offer_data:", offer_data)
+                    await asyncio.sleep(1.0)
                     continue
 
-                print(f"🔥🔥 [WebRTC] offer received: type={sdp_type}, sdp_len={len(sdp)}", flush=True)
+                pc = RTCPeerConnection()
+                self.pc = pc
+                print("[WebRTC] RTCPeerConnection created")
 
-                self._run_on_glib(self._build_pipeline, timeout=15.0)
-                self._run_on_glib(self._set_remote_description, sdp, sdp_type, timeout=10.0)
-                self._run_on_glib(self._create_answer, timeout=10.0)
+                @pc.on("connectionstatechange")
+                async def on_connectionstatechange():
+                    print("[WebRTC] sender state:", pc.connectionState)
 
-                ok = self._answer_ready_event.wait(timeout=20.0)
-                if not ok or self._local_answer is None:
-                    raise RuntimeError("timeout waiting for local answer")
+                @pc.on("iceconnectionstatechange")
+                async def on_iceconnectionstatechange():
+                    print("[WebRTC] ice state:", pc.iceConnectionState)
 
-                local_sdp, local_type = self._local_answer
+                @pc.on("icegatheringstatechange")
+                async def on_icegatheringstatechange():
+                    print("[WebRTC] ice gathering state:", pc.iceGatheringState)
+
+                pc.addTrack(BufferVideoTrack(self.buffer))
+                print("[WebRTC] track added")
+
+                offer = RTCSessionDescription(
+                    sdp=offer_data["sdp"],
+                    type=offer_data["type"],
+                )
+
+                print("[WebRTC] about to setRemoteDescription")
+                await pc.setRemoteDescription(offer)
+                print("[WebRTC] remote description set")
+
+                print("[WebRTC] about to createAnswer")
+                answer = await pc.createAnswer()
+                print("[WebRTC] answer created")
+
+                print("[WebRTC] about to setLocalDescription")
+                await pc.setLocalDescription(answer)
+                print("[WebRTC] local description set")
+
+                if pc.localDescription is None:
+                    print("[WebRTC] ERROR: localDescription is None")
+                    await asyncio.sleep(1.0)
+                    continue
+
+                print("[WebRTC] localDescription.type =", pc.localDescription.type)
+                print("[WebRTC] localDescription.sdp_len =", len(pc.localDescription.sdp))
 
                 ans_url = f"{self.signaling_base_url}/sender_answer"
-                payload = {"sdp": local_sdp, "type": local_type}
-                r = requests.post(ans_url, json=payload, timeout=10.0)
+                payload = {
+                    "sdp": pc.localDescription.sdp,
+                    "type": pc.localDescription.type,
+                }
 
-                if r.status_code != 200:
-                    raise RuntimeError(
-                        f"sender_answer failed: status={r.status_code}, body={r.text[:300]}"
-                    )
-
-                print(f"[WebRTC] answer posted successfully: type={local_type}, sdp_len={len(local_sdp)}")
-
-            except Exception as e:
-                print("[WebRTC] signaling worker error:", repr(e))
-                time.sleep(1.0)
-
-    def _set_remote_description(self, sdp_text: str, sdp_type: str):
-        if self.webrtc is None:
-            raise RuntimeError("webrtcbin is None")
-
-        type_map = {
-            "offer": GstWebRTC.WebRTCSDPType.OFFER,
-            "answer": GstWebRTC.WebRTCSDPType.ANSWER,
-            "pranswer": GstWebRTC.WebRTCSDPType.PRANSWER,
-            "rollback": GstWebRTC.WebRTCSDPType.ROLLBACK,
-        }
-
-        if sdp_type not in type_map:
-            raise RuntimeError(f"unsupported SDP type: {sdp_type}")
-
-        res, sdpmsg = GstSdp.SDPMessage.new()
-        if res != GstSdp.SDPResult.OK:
-            raise RuntimeError(f"failed to create SDP message: {res}")
-
-        parse_res = GstSdp.sdp_message_parse_buffer(bytes(sdp_text.encode("utf-8")), sdpmsg)
-        if parse_res != GstSdp.SDPResult.OK:
-            raise RuntimeError(f"failed to parse remote SDP: {parse_res}")
-
-        desc = GstWebRTC.WebRTCSessionDescription.new(type_map[sdp_type], sdpmsg)
-        promise = Gst.Promise.new()
-        self.webrtc.emit("set-remote-description", desc, promise)
-        promise.interrupt()
-
-        print("[WebRTC] remote description set")
-
-    def _create_answer(self):
-        if self.webrtc is None:
-            raise RuntimeError("webrtcbin is None")
-
-        self._answer_ready_event.clear()
-        self._local_answer = None
-
-        promise = Gst.Promise.new_with_change_func(self._on_answer_created, None, None)
-        self.webrtc.emit("create-answer", None, promise)
-        print("[WebRTC] create-answer emitted")
-
-    def _on_answer_created(self, promise: Gst.Promise, _unused1, _unused2):
-        try:
-            reply = promise.get_reply()
-            answer = reply.get_value("answer")
-            if answer is None:
-                raise RuntimeError("create-answer returned no answer")
-
-            print("[WebRTC] answer created, setting local description")
-
-            local_promise = Gst.Promise.new()
-            self.webrtc.emit("set-local-description", answer, local_promise)
-            local_promise.interrupt()
-
-            threading.Thread(
-                target=self._wait_for_complete_local_description,
-                daemon=True,
-            ).start()
-
-        except Exception as e:
-            print("[WebRTC] _on_answer_created failed:", repr(e))
-
-    def _wait_for_complete_local_description(self):
-        try:
-            if self.webrtc is None:
-                raise RuntimeError("webrtcbin is None")
-
-            t_end = time.monotonic() + 15.0
-            while time.monotonic() < t_end:
+                print("[WebRTC] posting answer to:", ans_url)
+                r = await self._http_post(ans_url, json_data=payload, timeout=10.0)
+                print("[WebRTC] sender_answer post status =", r.status_code)
                 try:
-                    state = self.webrtc.get_property("ice-gathering-state")
-                    state_name = self._enum_nick(state)
-                    if state_name == "complete":
-                        break
+                    print("[WebRTC] sender_answer post body =", r.text[:300])
                 except Exception:
                     pass
-                time.sleep(0.1)
 
-            local_desc = self.webrtc.get_property("local-description")
-            if local_desc is None:
-                raise RuntimeError("local-description is None")
+                if r.status_code != 200:
+                    print("[WebRTC] sender_answer post failed")
+                    await asyncio.sleep(1.0)
+                    continue
 
-            sdp_text = local_desc.sdp.as_text()
-            sdp_type = self._sdp_type_to_string(local_desc.type)
+                print("[WebRTC] answer posted successfully")
 
-            if not sdp_text or not sdp_type:
-                raise RuntimeError("invalid local SDP generated")
+                while self.running:
+                    state = pc.connectionState
+                    if state in ("failed", "closed", "disconnected"):
+                        print("[WebRTC] leaving connection loop, state =", state)
+                        break
+                    await asyncio.sleep(1.0)
 
-            self._local_answer = (sdp_text, sdp_type)
-            self._answer_ready_event.set()
+            except Exception as e:
+                print("[WebRTC] sender error:", repr(e))
 
-            print(f"[WebRTC] local answer ready: type={sdp_type}, sdp_len={len(sdp_text)}")
+            finally:
+                if pc is not None:
+                    try:
+                        await pc.close()
+                        print("[WebRTC] pc closed")
+                    except Exception as e:
+                        print("[WebRTC] pc close error:", repr(e))
 
-        except Exception as e:
-            print("[WebRTC] _wait_for_complete_local_description failed:", repr(e))
+                self.pc = None
 
-    # =========================================================
-    # GStreamer callbacks
-    # =========================================================
-    def _on_ice_candidate(self, element, mlineindex, candidate):
-        print(f"[WebRTC] on-ice-candidate mline={mlineindex}, candidate_len={len(candidate)}")
-
-    def _on_ice_gathering_state_changed(self, element, _pspec):
-        try:
-            state = element.get_property("ice-gathering-state")
-            print("[WebRTC] ice-gathering-state =", self._enum_nick(state))
-        except Exception as e:
-            print("[WebRTC] ice-gathering-state read failed:", repr(e))
-
-    def _on_ice_connection_state_changed(self, element, _pspec):
-        try:
-            state = element.get_property("ice-connection-state")
-            print("[WebRTC] ice-connection-state =", self._enum_nick(state))
-        except Exception as e:
-            print("[WebRTC] ice-connection-state read failed:", repr(e))
-
-    def _on_connection_state_changed(self, element, _pspec):
-        try:
-            state = element.get_property("connection-state")
-            print("[WebRTC] connection-state =", self._enum_nick(state))
-        except Exception as e:
-            print("[WebRTC] connection-state read failed:", repr(e))
-
-    def _on_signaling_state_changed(self, element, _pspec):
-        try:
-            state = element.get_property("signaling-state")
-            print("[WebRTC] signaling-state =", self._enum_nick(state))
-        except Exception as e:
-            print("[WebRTC] signaling-state read failed:", repr(e))
-
-    def _on_bus_message(self, bus, message):
-        msg_type = message.type
-
-        if msg_type == Gst.MessageType.ERROR:
-            err, debug = message.parse_error()
-            print("[GStreamer][ERROR]", err, "/", debug)
-
-        elif msg_type == Gst.MessageType.WARNING:
-            err, debug = message.parse_warning()
-            print("[GStreamer][WARNING]", err, "/", debug)
-
-        elif msg_type == Gst.MessageType.EOS:
-            print("[GStreamer] EOS received")
-
-        elif msg_type == Gst.MessageType.STATE_CHANGED:
-            if message.src == self.pipeline:
-                old_state, new_state, pending = message.parse_state_changed()
-                print(f"[GStreamer] pipeline state: {old_state.value_nick} -> {new_state.value_nick}")
-
-    # =========================================================
-    # Utils
-    # =========================================================
-    def _enum_nick(self, enum_val) -> str:
-        try:
-            return enum_val.value_nick
-        except Exception:
-            return str(enum_val)
-
-    def _sdp_type_to_string(self, sdp_type) -> str:
-        if sdp_type == GstWebRTC.WebRTCSDPType.OFFER:
-            return "offer"
-        if sdp_type == GstWebRTC.WebRTCSDPType.ANSWER:
-            return "answer"
-        if sdp_type == GstWebRTC.WebRTCSDPType.PRANSWER:
-            return "pranswer"
-        if sdp_type == GstWebRTC.WebRTCSDPType.ROLLBACK:
-            return "rollback"
-        return ""
+            await asyncio.sleep(1.0)
