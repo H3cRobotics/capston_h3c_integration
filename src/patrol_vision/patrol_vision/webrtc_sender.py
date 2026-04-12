@@ -1,7 +1,7 @@
 # webrtc_sender.py
 
 """
-하드웨어 인코딩 방식으로 변경하며 추가로 필요한 apt 패키지들
+필수 패키지
 
 sudo apt-get update
 
@@ -16,14 +16,13 @@ sudo apt-get install -y \
   gstreamer1.0-libav \
   python3-requests
 
-필수 확인
+확인
 gst-inspect-1.0 webrtcbin
 gst-inspect-1.0 nvv4l2h264enc
-python3 -c "import gi; from gi.repository import Gst; print('gst ok')"
-
-
+python3 -c "import gi; from gi.repository import Gst; Gst.init(None); print('gst ok')"
 """
 
+import sys
 import threading
 import time
 from typing import Optional, Tuple
@@ -32,7 +31,6 @@ import cv2
 import numpy as np
 import requests
 
-import sys
 sys.stdout.reconfigure(line_buffering=True)
 
 import rclpy
@@ -115,15 +113,6 @@ class _WebRTCImageSubscriber(Node):
 class WebRTCSender:
     """
     Hardware-encoding WebRTC sender.
-
-    사용 예:
-        sender = WebRTCSender(
-            signaling_base_url="http://127.0.0.1:8001",
-            image_topic="/camera/color/image_raw",
-        )
-        sender.start()
-        ...
-        sender.stop()
     """
 
     def __init__(
@@ -153,7 +142,6 @@ class WebRTCSender:
 
         self.running = False
 
-        # latest frame only
         self._frame_lock = threading.Lock()
         self._latest_bgr: Optional[np.ndarray] = None
         self._latest_stamp_ns: int = 0
@@ -161,25 +149,22 @@ class WebRTCSender:
         self._frame_push_count = 0
         self._last_stat_log_t = time.monotonic()
 
-        # signaling/session state
         self._session_lock = threading.Lock()
         self._answer_ready_event = threading.Event()
-        self._local_answer: Optional[Tuple[str, str]] = None  # (sdp, type)
+        self._local_answer: Optional[Tuple[str, str]] = None
 
-        # threads
         self._glib_thread: Optional[threading.Thread] = None
         self._ros_thread: Optional[threading.Thread] = None
         self._signaling_thread: Optional[threading.Thread] = None
 
-        # ROS internals
         self._ros_node: Optional[_WebRTCImageSubscriber] = None
         self._executor: Optional[SingleThreadedExecutor] = None
 
-        # GStreamer internals
         self.loop: Optional[GLib.MainLoop] = None
         self.pipeline = None
         self.appsrc = None
         self.webrtc = None
+        self.webrtc_sink_pad = None
 
         Gst.init(None)
 
@@ -200,15 +185,12 @@ class WebRTCSender:
 
         self.running = True
 
-        # GLib main loop
         self.loop = GLib.MainLoop()
         self._glib_thread = threading.Thread(target=self._run_glib_loop, daemon=True)
         self._glib_thread.start()
 
-        # ROS subscriber
         self._start_ros_subscriber()
 
-        # signaling thread
         self._signaling_thread = threading.Thread(target=self._signaling_worker, daemon=True)
         self._signaling_thread.start()
 
@@ -307,21 +289,50 @@ class WebRTCSender:
             f'! h264parse config-interval=-1 '
             f'! rtph264pay name=pay pt=96 config-interval=1'
         )
-        
+
+    def _cleanup_old_pipeline(self):
+        if self.pipeline is not None:
+            try:
+                self.pipeline.set_state(Gst.State.NULL)
+            except Exception as e:
+                print("[WebRTC] old pipeline shutdown failed:", repr(e))
+
+        self.pipeline = None
+        self.appsrc = None
+        self.webrtc = None
+        self.webrtc_sink_pad = None
+
+    def _request_webrtc_sink_pad(self):
+        webrtc_sink_pad = None
+
+        if hasattr(self.webrtc, "request_pad_simple"):
+            try:
+                webrtc_sink_pad = self.webrtc.request_pad_simple("sink_%u")
+            except Exception as e:
+                print("[WebRTC] request_pad_simple failed:", repr(e))
+
+        if webrtc_sink_pad is None and hasattr(self.webrtc, "get_request_pad"):
+            try:
+                webrtc_sink_pad = self.webrtc.get_request_pad("sink_%u")
+            except Exception as e:
+                print("[WebRTC] get_request_pad failed:", repr(e))
+
+        if webrtc_sink_pad is None:
+            try:
+                templ = self.webrtc.get_pad_template("sink_%u")
+                if templ is not None:
+                    webrtc_sink_pad = self.webrtc.request_pad(templ, None, None)
+            except Exception as e:
+                print("[WebRTC] request_pad(template) failed:", repr(e))
+
+        return webrtc_sink_pad
+
     def _build_pipeline(self):
         with self._session_lock:
             self._answer_ready_event.clear()
             self._local_answer = None
 
-            if self.pipeline is not None:
-                try:
-                    self.pipeline.set_state(Gst.State.NULL)
-                except Exception as e:
-                    print("[WebRTC] old pipeline shutdown failed:", repr(e))
-
-            self.pipeline = None
-            self.appsrc = None
-            self.webrtc = None
+            self._cleanup_old_pipeline()
 
             pipeline_str = self._pipeline_string()
             print("[WebRTC] creating GStreamer pipeline:")
@@ -346,21 +357,25 @@ class WebRTCSender:
             self.webrtc.set_property("bundle-policy", "max-bundle")
             self.webrtc.set_property("stun-server", self.stun_server)
 
-            self.pipeline.add(self.webrtc)
+            added = self.pipeline.add(self.webrtc)
+            if not added:
+                raise RuntimeError("failed to add webrtcbin to pipeline")
 
             pay_src_pad = pay.get_static_pad("src")
             if pay_src_pad is None:
                 raise RuntimeError("failed to get pay src pad")
 
-            templ = self.webrtc.get_pad_template("sink_%u")
-            if templ is None:
-                raise RuntimeError("webrtcbin sink_%u pad template not found")
-
-            webrtc_sink_pad = self.webrtc.request_pad(templ, None, None)
-            if webrtc_sink_pad is None:
+            self.webrtc_sink_pad = self._request_webrtc_sink_pad()
+            if self.webrtc_sink_pad is None:
                 raise RuntimeError("failed to request webrtcbin sink pad")
 
-            link_ret = pay_src_pad.link(webrtc_sink_pad)
+            sink_caps = self.webrtc_sink_pad.query_caps(None)
+            print("[WebRTC] webrtc sink caps =", sink_caps.to_string() if sink_caps else "None")
+
+            pay_caps = pay_src_pad.query_caps(None)
+            print("[WebRTC] pay src caps =", pay_caps.to_string() if pay_caps else "None")
+
+            link_ret = pay_src_pad.link(self.webrtc_sink_pad)
             if link_ret != Gst.PadLinkReturn.OK:
                 raise RuntimeError(f"failed to link rtph264pay to webrtcbin: {link_ret}")
 
@@ -386,6 +401,11 @@ class WebRTCSender:
             ret = self.pipeline.set_state(Gst.State.PLAYING)
             if ret == Gst.StateChangeReturn.FAILURE:
                 raise RuntimeError("failed to set pipeline PLAYING")
+
+            try:
+                self.webrtc.sync_state_with_parent()
+            except Exception as e:
+                print("[WebRTC] sync_state_with_parent failed:", repr(e))
 
             print("[WebRTC] GStreamer pipeline PLAYING")
 
@@ -440,9 +460,8 @@ class WebRTCSender:
                     time.sleep(self.poll_interval_sec)
                     continue
 
-                print(f" 🔥🔥 [WebRTC] offer received: type={sdp_type}, sdp_len={len(sdp)}", flush=True)
-                
-                # 새 세션마다 pipeline 재생성
+                print(f"🔥🔥 [WebRTC] offer received: type={sdp_type}, sdp_len={len(sdp)}", flush=True)
+
                 self._build_pipeline()
 
                 self._set_remote_description(sdp, sdp_type)
