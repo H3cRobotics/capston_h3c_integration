@@ -26,9 +26,9 @@ class BufferVideoTrack(VideoStreamTrack):
             rgb = self._last_frame
 
         if rgb is None:
-            rgb = np.zeros((720, 1280, 3), dtype=np.uint8)
+            rgb = np.zeros((540, 960, 3), dtype=np.uint8)
 
-        rgb = cv2.resize(rgb, (1280, 720), interpolation=cv2.INTER_AREA)
+        rgb = cv2.resize(rgb, (960, 540), interpolation=cv2.INTER_AREA)
 
         frame = VideoFrame.from_ndarray(rgb, format="rgb24")
         frame.pts = pts
