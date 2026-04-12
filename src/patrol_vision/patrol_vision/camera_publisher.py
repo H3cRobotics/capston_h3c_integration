@@ -30,10 +30,10 @@ class CameraPublisher(Node):
 
 	def setup_camera(self):
 		cmds = [
-			["v4l2-ctl", "-d", "/dev/video0", "--set-ctrl=auto_exposure=3"],   # 노출 자동
-			["v4l2-ctl", "-d", "/dev/video0", "--set-ctrl=white_balance_automatic=0"],  # WB 자동 끔
-			["v4l2-ctl", "-d", "/dev/video0", "--set-ctrl=white_balance_temperature=4500"],  # WB 고정
-			["v4l2-ctl", "-d", "/dev/video0", "--set-ctrl=focus_automatic_continuous=0"]  # AF 끔
+			["v4l2-ctl", "-d", self.video_device, "--set-ctrl=auto_exposure=3"],   # 노출 자동
+			["v4l2-ctl", "-d", self.video_device, "--set-ctrl=white_balance_automatic=0"],  # WB 자동 끔
+			["v4l2-ctl", "-d", self.video_device, "--set-ctrl=white_balance_temperature=4500"],  # WB 고정
+			["v4l2-ctl", "-d", self.video_device, "--set-ctrl=focus_automatic_continuous=0"]  # AF 끔
 		]
 
 		for cmd in cmds:
@@ -108,6 +108,11 @@ class CameraPublisher(Node):
 		super().__init__("camera_publisher")
 
 		self.declare_parameter("calib_file", "./data/camera_intrinsics.yaml")
+		self.declare_parameter(
+            "video_device",
+            "/dev/v4l/by-id/usb-046d_MX_Brio_2535ZB33GY68-video-index0"
+        )
+		self.video_device = str(self.get_parameter("video_device").value)
 		self.calib_file = str(self.get_parameter("calib_file").value)
 		self.get_logger().info(f"calib_file path : {self.calib_file}")
 				
@@ -119,7 +124,7 @@ class CameraPublisher(Node):
 
 		self.bridge = CvBridge()
 
-		self.cap = cv2.VideoCapture("usb-046d_MX_Brio_2535ZB33GY68-video-index0", cv2.CAP_V4L2)
+		self.cap = cv2.VideoCapture(self.video_device, cv2.CAP_V4L2)
 		self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
 		self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
 		self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
