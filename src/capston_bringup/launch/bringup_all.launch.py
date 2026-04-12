@@ -13,7 +13,7 @@ def generate_launch_description():
 
     server_ip_arg = DeclareLaunchArgument(
         'server_ip',
-        default_value='192.168.0.16',
+        default_value='192.168.0.221',
         description='A single IP address to construct all server URLs.'
     )
 
