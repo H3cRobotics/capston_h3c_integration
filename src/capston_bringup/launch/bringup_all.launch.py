@@ -43,13 +43,10 @@ def generate_launch_description():
         os.path.join(realsense_dir, 'launch', 'rs_launch.py')
     ),
         launch_arguments={
-            'rgb_camera.color_profile': '640x480x30',
-            'depth_module.depth_profile': '640x480x30',
+            'rgb_camera.color_profile': '1280x720x30',
+            'depth_module.depth_profile': '1280x720x30',
             'enable_depth': 'true',
             'align_depth.enable': 'true',
-
-            'rgb_camera.enable_auto_white_balance': 'false',
-            'rgb_camera.white_balance': '4500',   # 값은 환경에 맞게 조정
             'rgb_camera.enable_auto_exposure': 'true',
         }.items()
     )
