@@ -10,11 +10,11 @@ def generate_launch_description():
     patrol_bridge_dir = get_package_share_directory('patrol_bridge')
     security_audio_system_dir = get_package_share_directory('security_audio_system')
     patrol_yolo_system_dir = get_package_share_directory('patrol_yolo')
-    realsense_dir = get_package_share_directory('realsense2_camera')
+    capston_bringup_dir = get_package_share_directory('capston_bringup')
 
     server_ip_arg = DeclareLaunchArgument(
         'server_ip',
-        default_value='192.168.0.221',
+        default_value='192.168.0.16',
         description='A single IP address to construct all server URLs.'
     )
 
@@ -37,22 +37,12 @@ def generate_launch_description():
     server_url = ['http://', server_ip, ':8000']
     signaling_url = ['http://', server_ip, ':8001']
 
-    # 리얼센스 사용시
     realsense_launch = IncludeLaunchDescription(
-    PythonLaunchDescriptionSource(
-        os.path.join(realsense_dir, 'launch', 'rs_launch.py')
-    ),
-        launch_arguments={
-            'rgb_camera.color_profile': '1280x720x30',
-            'depth_module.depth_profile': '1280x720x30',
-            'enable_depth': 'true',
-            'align_depth.enable': 'true',
-            'rgb_camera.enable_auto_exposure': 'true',
-        }.items()
+        PythonLaunchDescriptionSource(
+            os.path.join(capston_bringup_dir, 'launch', 'realsense_wrapper.launch.py')
+        )
     )
     
-
-
     vision_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(patrol_vision_dir, 'launch', 'system.launch.py')),
         launch_arguments={
@@ -90,10 +80,9 @@ def generate_launch_description():
         server_ip_arg,
         image_topic_arg,
         yolo_mode_arg,
-        realsense_launch,
         vision_launch,
         yolo_launch,
         bridge_launch,
         audio_launch,
-
+        realsense_launch
     ])

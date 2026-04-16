@@ -18,6 +18,7 @@ def generate_launch_description():
 
 
 	return LaunchDescription([
+		
 		DeclareLaunchArgument('image_topic',default_value='/camera/color/image_raw'),
 		DeclareLaunchArgument('server_url', default_value='http://192.168.0.221:8000'),
 		DeclareLaunchArgument('signaling_url', default_value='http://192.168.0.221:8001'),
