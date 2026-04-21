@@ -14,6 +14,12 @@ PersonFollowingNode
       값 : IDLE | TRACKING | LOST
       → state_publish_hz로 주기적으로 고정 발행
 
+    /person_tracking/follow_person_id   (std_msgs/String)
+    값: 현재 추적 중인 대상의 ByteTrack ID (예: "7")
+    타겟 없으면 ""
+    인증 이벤트와 tracking 대상 매칭용 식별자
+    state_publish_hz 주기로 follow_state와 함께 발행
+
 구독 토픽
   /person_tracking/tracks_json   (std_msgs/String, JSON)
   /person_tracking/enable        (std_msgs/Bool)
@@ -69,6 +75,7 @@ class PersonFollowingNode(Node):
         self.declare_parameter("enable_topic",            "/person_tracking/enable")
         self.declare_parameter("target_topic",            "/person_tracking/follow_target")
         self.declare_parameter("state_topic",             "/person_tracking/follow_state")
+        self.declare_parameter("person_id_topic", "/person_tracking/follow_person_id")
 
         # 대상 선택 전략: "largest_bbox" | "center" | "first_seen"
         self.declare_parameter("target_strategy",         "largest_bbox")
@@ -105,6 +112,7 @@ class PersonFollowingNode(Node):
         self.enable_topic           = str(self.get_parameter("enable_topic").value)
         self.target_topic           = str(self.get_parameter("target_topic").value)
         self.state_topic            = str(self.get_parameter("state_topic").value)
+        self.person_id_topic = str(self.get_parameter("person_id_topic").value)
 
         self.target_strategy        = str(self.get_parameter("target_strategy").value)
         self.frame_center_u         = int(self.get_parameter("frame_center_u").value)
@@ -149,6 +157,10 @@ class PersonFollowingNode(Node):
 
         self.state_pub = self.create_publisher(
             String, self.state_topic, 10)
+        
+        self.person_id_pub = self.create_publisher(
+            String, self.person_id_topic, 10
+        )
 
         self.state_timer = self.create_timer(
             1.0 / state_hz, self._publish_state)
@@ -414,10 +426,16 @@ class PersonFollowingNode(Node):
     def _publish_state(self):
         """state_publish_hz 주기로 현재 FSM 상태 퍼블리시."""
         with self._lock:
-            current = self.state
-        msg      = String()
-        msg.data = current
-        self.state_pub.publish(msg)
+            current_state = self.state
+            current_target = self.target_id
+
+        state_msg = String()
+        state_msg.data = current_state
+        self.state_pub.publish(state_msg)
+
+        pid_msg = String()
+        pid_msg.data = "" if current_target is None else str(current_target)
+        self.person_id_pub.publish(pid_msg)
 
     # ────────────────────────────────────────────────────────────────────
 
