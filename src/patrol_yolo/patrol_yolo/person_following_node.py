@@ -360,11 +360,13 @@ class PersonFollowingNode(Node):
 
     def _reset_to_idle(self, reason: str):
         with self._lock:
-            self.state           = IDLE
-            self.target_id       = None
+            self.state = IDLE
+            self.target_id = None
             self.lost_start_time = None
-            self.no_depth_streak = 0       
-            self.candidate_hits.clear()    
+            self.no_depth_streak = 0
+            self.candidate_hits.clear()
+            self.last_valid_target_track = None
+            self.last_valid_target_time = 0.0
         self.get_logger().info(f"[FSM] → IDLE  reason={reason}")
 
     def _can_switch_id_locked(self, new_id: int, now: float) -> bool:
