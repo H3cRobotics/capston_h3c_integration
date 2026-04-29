@@ -10,7 +10,7 @@ def generate_launch_description():
     # 2. 런치 인자를 선언하고, 아무것도 입력하지 않았을 때의 기본값을 설정합니다.
     declare_server_url_cmd = DeclareLaunchArgument(
         'server_url',
-        default_value='http://192.168.0.16:8000',
+        default_value='http://192.168.0.221:8000',
         description='Base URL for the server'
     )
 
