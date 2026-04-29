@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import os
 import time
 import subprocess
 from datetime import datetime
@@ -9,6 +10,7 @@ from typing import Optional
 
 import cv2
 import requests
+import pygame  # 오디오 재생을 위한 라이브러리
 import rclpy
 from rclpy.node import Node
 
@@ -41,6 +43,17 @@ class SecondaryAuthNode(Node):
         self.rfid_read_cooldown_sec = 1.5
 
         # =========================
+        # 오디오(Pygame) 초기화
+        # =========================
+        try:
+            pygame.mixer.init()
+            # 현재 스크립트가 위치한 폴더의 절대 경로를 스스로 찾아냅니다.
+            self.audio_dir = os.path.dirname(os.path.realpath(__file__))
+            self.get_logger().info('오디오 믹서 초기화 성공: 오디오 알림이 활성화되었습니다.')
+        except Exception as e:
+            self.get_logger().warn(f'오디오 믹서 초기화 실패 (소리가 나지 않을 수 있습니다): {e}')
+
+        # =========================
         # 내부 상태
         # =========================
         self.bridge = CvBridge()
@@ -62,26 +75,9 @@ class SecondaryAuthNode(Node):
         # =========================
         # ROS 인터페이스
         # =========================
-        self.create_subscription(
-            String,
-            self.follow_person_id_topic,
-            self.follow_person_id_cb,
-            10
-        )
-
-        self.create_subscription(
-            Image,
-            self.annotated_topic,
-            self.annotated_cb,
-            10
-        )
-
-        self.create_subscription(
-            Bool,
-            self.auth_ready_topic,
-            self.auth_ready_cb,
-            10
-        )
+        self.create_subscription(String, self.follow_person_id_topic, self.follow_person_id_cb, 10)
+        self.create_subscription(Image, self.annotated_topic, self.annotated_cb, 10)
+        self.create_subscription(Bool, self.auth_ready_topic, self.auth_ready_cb, 10)
 
         # PC/SC 워밍업
         self.warmup_pcsc()
@@ -91,23 +87,35 @@ class SecondaryAuthNode(Node):
         self.get_logger().info(
             f'SecondaryAuthNode started | '
             f'server={self.server_base_url} | '
-            f'follow_person_id_topic={self.follow_person_id_topic} | '
-            f'annotated_topic={self.annotated_topic} | '
-            f'auth_ready_topic={self.auth_ready_topic} | '
             f'reader_hint={self.reader_name_hint}'
         )
+
+    # =========================
+    # 오디오 재생 전담 헬퍼 함수
+    # =========================
+    def play_sound(self, filename: str):
+        """지정된 오디오 파일을 백그라운드에서 비동기로 부드럽게 재생합니다."""
+        if not hasattr(self, 'audio_dir'):
+            return
+
+        filepath = os.path.join(self.audio_dir, filename)
+        if os.path.exists(filepath):
+            try:
+                pygame.mixer.music.load(filepath)
+                pygame.mixer.music.play()
+                self.get_logger().info(f'오디오 재생 중: {filename}')
+            except Exception as e:
+                self.get_logger().error(f'오디오 재생 중 오류 발생: {e}')
+        else:
+            self.get_logger().error(f'오디오 파일을 찾을 수 없습니다 (해당 경로에 파일을 넣어주세요): {filepath}')
 
     # =========================
     # PC/SC 워밍업
     # =========================
     def warmup_pcsc(self):
         self.get_logger().info('warming up pcsc with pcsc_scan...')
-
         try:
-            subprocess.run(
-                ['bash', '-lc', 'timeout 2s pcsc_scan >/dev/null 2>&1 || true'],
-                check=False
-            )
+            subprocess.run(['bash', '-lc', 'timeout 2s pcsc_scan >/dev/null 2>&1 || true'], check=False)
             self.get_logger().info('pcsc warmup done')
         except Exception as e:
             self.get_logger().warn(f'pcsc warmup failed: {e}')
@@ -117,10 +125,8 @@ class SecondaryAuthNode(Node):
     # =========================
     def follow_person_id_cb(self, msg: String):
         new_id = msg.data.strip()
-
         if new_id == "":
             return
-
         with self.lock:
             self.latest_follow_person_id = new_id
 
@@ -130,14 +136,12 @@ class SecondaryAuthNode(Node):
         except Exception as e:
             self.get_logger().warn(f'annotated image convert failed: {e}')
             return
-
         with self.lock:
             self.latest_auth_frame = frame.copy()
 
     def auth_ready_cb(self, msg: Bool):
         if msg.data and not self.last_auth_ready:
             self.start_auth()
-
         self.last_auth_ready = msg.data
 
     # =========================
@@ -148,7 +152,6 @@ class SecondaryAuthNode(Node):
             if self.auth_in_progress:
                 self.get_logger().warn('auth already in progress')
                 return
-
             tracking_person_id = self.latest_follow_person_id
             frame_snapshot = None if self.latest_auth_frame is None else self.latest_auth_frame.copy()
 
@@ -156,9 +159,7 @@ class SecondaryAuthNode(Node):
             self.get_logger().warn('latest_follow_person_id is empty')
             return
 
-        payload = {
-            "tracking_person_id": tracking_person_id,
-        }
+        payload = {"tracking_person_id": tracking_person_id}
 
         try:
             resp = self.http.post(
@@ -187,9 +188,10 @@ class SecondaryAuthNode(Node):
             self.auth_start_frame = frame_snapshot
             self.auth_started_mono = time.monotonic()
 
-        self.get_logger().info(
-            f'auth started | tracking_person_id={tracking_person_id} | auth_event_id={auth_event_id}'
-        )
+        self.get_logger().info(f'auth started | tracking_person_id={tracking_person_id} | auth_event_id={auth_event_id}')
+        
+        # 🟢 서버가 인증을 무사히 접수했으므로 시작음을 울립니다.
+        self.play_sound('start.wav')
 
     # =========================
     # 주기 루프
@@ -224,7 +226,6 @@ class SecondaryAuthNode(Node):
     # =========================
     def select_reader(self):
         hint = self.reader_name_hint.lower()
-
         for _ in range(10):
             try:
                 available = readers()
@@ -235,34 +236,24 @@ class SecondaryAuthNode(Node):
                     return available[0]
             except Exception as e:
                 self.get_logger().warn(f'reader enumeration failed: {e}')
-
             time.sleep(0.5)
-
         return None
 
     def read_uid_once(self) -> Optional[str]:
         reader = self.select_reader()
-
         if reader is None:
             return None
-
         conn = None
         try:
             conn = reader.createConnection()
             conn.connect()
-
             apdu = [0xFF, 0xCA, 0x00, 0x00, 0x00]
             data, sw1, sw2 = conn.transmit(apdu)
-
             if sw1 == 0x90 and sw2 == 0x00 and len(data) > 0:
                 uid = ''.join(f'{b:02X}' for b in data)
                 return uid
-
             return None
-
-        except NoCardException:
-            return None
-        except CardConnectionException:
+        except (NoCardException, CardConnectionException):
             return None
         except Exception as e:
             self.get_logger().warn(f'UID read failed: {e}')
@@ -275,7 +266,7 @@ class SecondaryAuthNode(Node):
                     pass
 
     # =========================
-    # 서버 전송
+    # 서버 전송 및 응답 확인 (핵심 변경 구역)
     # =========================
     def send_rfid(self, uid: str):
         with self.lock:
@@ -286,28 +277,36 @@ class SecondaryAuthNode(Node):
             self.get_logger().warn('send_rfid called but auth_event_id is empty')
             return
 
-        data = {
-            "auth_event_id": auth_event_id,
-            "rfid_uid": uid,
-        }
-
+        data = {"auth_event_id": auth_event_id, "rfid_uid": uid}
         files = self.build_image_file(frame)
 
         try:
-            resp = self.http.post(
-                f'{self.server_base_url}/auth/rfid',
-                data=data,
-                files=files,
-                timeout=self.request_timeout_sec
-            )
+            # 1. 로봇이 서버로 카드를 전송합니다.
+            resp = self.http.post(f'{self.server_base_url}/auth/rfid', data=data, files=files, timeout=self.request_timeout_sec)
             resp.raise_for_status()
+            
+            # 2. 서버가 즉시 돌려준 대답(JSON)을 확인합니다.
             result = resp.json()
-        except Exception as e:
-            self.get_logger().error(f'/auth/rfid failed: {e}')
-            return
+            self.get_logger().info(f'/auth/rfid result: {result}')
 
-        self.get_logger().info(f'/auth/rfid result: {result}')
-        self.clear_auth_state()
+            # 3. 서버 응답 내용에서 'status' 값을 뽑아냅니다.
+            auth_event = result.get("auth_event", {})
+            status = auth_event.get("status", "")
+
+            # 4. 판정 결과에 따라 직관적인 소리를 냅니다.
+            if status == "success":
+                self.play_sound('success.wav')
+                self.get_logger().info("✅ 인증 성공! (success.wav 재생)")
+            elif status == "fail":
+                self.play_sound('fail.wav')
+                self.get_logger().info("❌ 인증 실패! (fail.wav 재생)")
+
+        except Exception as e:
+            self.get_logger().error(f'/auth/rfid 통신 중 치명적 오류 발생: {e}')
+            return
+        finally:
+            # 작업이 끝났으므로 다음 인증을 위해 로봇의 상태를 깨끗이 청소합니다.
+            self.clear_auth_state()
 
     def send_timeout(self):
         with self.lock:
@@ -318,28 +317,23 @@ class SecondaryAuthNode(Node):
             self.get_logger().warn('send_timeout called but auth_event_id is empty')
             return
 
-        data = {
-            "auth_event_id": auth_event_id,
-            "timestamp": datetime.now().isoformat(),
-        }
-
+        data = {"auth_event_id": auth_event_id, "timestamp": datetime.now().isoformat()}
         files = self.build_image_file(frame)
 
         try:
-            resp = self.http.post(
-                f'{self.server_base_url}/auth/timeout',
-                data=data,
-                files=files,
-                timeout=self.request_timeout_sec
-            )
+            resp = self.http.post(f'{self.server_base_url}/auth/timeout', data=data, files=files, timeout=self.request_timeout_sec)
             resp.raise_for_status()
             result = resp.json()
+            self.get_logger().info(f'/auth/timeout result: {result}')
+            
+            # 🟢 타임아웃 발생 시에도 어쨌든 실패이므로 알림음을 울립니다.
+            self.play_sound('fail.wav')
+            
         except Exception as e:
             self.get_logger().error(f'/auth/timeout failed: {e}')
             return
-
-        self.get_logger().info(f'/auth/timeout result: {result}')
-        self.clear_auth_state()
+        finally:
+            self.clear_auth_state()
 
     # =========================
     # 이미지 첨부
@@ -347,19 +341,11 @@ class SecondaryAuthNode(Node):
     def build_image_file(self, frame):
         if frame is None:
             return None
-
-        ok, enc = cv2.imencode(
-            '.jpg',
-            frame,
-            [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality]
-        )
+        ok, enc = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality])
         if not ok:
             self.get_logger().warn('image encoding failed')
             return None
-
-        return {
-            'image': ('auth.jpg', enc.tobytes(), 'image/jpeg')
-        }
+        return {'image': ('auth.jpg', enc.tobytes(), 'image/jpeg')}
 
     # =========================
     # 상태 초기화
@@ -371,8 +357,7 @@ class SecondaryAuthNode(Node):
             self.auth_start_frame = None
             self.auth_started_mono = 0.0
             self.last_auth_ready = False
-
-        self.get_logger().info('auth session cleared')
+        self.get_logger().info('auth session cleared (인증 세션이 완전히 초기화되었습니다.)')
 
 
 def main(args=None):
@@ -381,11 +366,11 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
+        node.get_logger().info("사용자에 의해 안전하게 노드를 종료합니다.")
         pass
     finally:
         node.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()
