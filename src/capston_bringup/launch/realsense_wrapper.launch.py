@@ -10,11 +10,18 @@ def generate_launch_description():
             name='camera',
             output='screen',
             parameters=[{
-                'rgb_camera.color_profile': '1280x720x30',
-                'depth_module.depth_profile': '1280x720x30',
-                'enable_depth': True,
+                'camera_name': 'camera',
+                'camera_namespace': 'camera',
+
                 'enable_color': True,
+                'enable_depth': True,
+                'enable_sync': True,
+
                 'align_depth.enable': True,
+                'depth_module.depth_profile': '1280x720x30',
+                'rgb_camera.color_profile': '1280x720x30',
+
+                'depth_module.enable_auto_exposure': True,
                 'rgb_camera.enable_auto_exposure': True,
             }]
         )
