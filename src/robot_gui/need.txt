@@ -1,6 +1,11 @@
 sudo apt install python3-pyqt5
 sudo apt install ros-humble-cv-bridge
 
+pip uninstall opencv-python opencv-contrib-python opencv-python-headless
+
+sudo apt update
+sudo apt install -y python3-opencv python3-pyqt5 ros-humble-cv-bridge
+
 
 chan@ubuntu:~/capston_h3c_integration$ ros2 launch capston_bringup bringup_all.launch.py 
 [INFO] [launch]: All log files can be found below /home/chan/.ros/log/2026-04-30-20-22-11-804351-ubuntu-11948
