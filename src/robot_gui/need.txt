@@ -7,6 +7,205 @@ sudo apt update
 sudo apt install -y python3-opencv python3-pyqt5 ros-humble-cv-bridge
 
 
+[INFO] [realsense2_camera_node-19]: process has finished cleanly [pid 73777]
+[ERROR] [capture_sender-1]: process[capture_sender-1] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[INFO] [capture_sender-1]: sending signal 'SIGTERM' to process[capture_sender-1]
+[INFO] [capture_sender-1]: process has finished cleanly [pid 73741]
+chan@ubuntu:~/capston_h3c_integration$ ros2 launch capston_bringup bringup_all.launch.py 
+[INFO] [launch]: All log files can be found below /home/chan/.ros/log/2026-04-30-21-04-29-418625-ubuntu-75710
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [capture_sender-1]: process started with pid [75755]
+[INFO] [patrol_http_bridge-2]: process started with pid [75757]
+[INFO] [person_tracker_node-3]: process started with pid [75759]
+[INFO] [person_detect_control_node-4]: process started with pid [75761]
+[INFO] [person_event_sender_node-5]: process started with pid [75763]
+[INFO] [person_following_node-6]: process started with pid [75765]
+[INFO] [robot_pose_sender-7]: process started with pid [75767]
+[INFO] [robot_goal_sender-8]: process started with pid [75769]
+[INFO] [can_teacher_node-9]: process started with pid [75771]
+[INFO] [patrol_command_bridge-10]: process started with pid [75773]
+[INFO] [audio_frontend_node-11]: process started with pid [75775]
+[INFO] [respeaker_doa_node-12]: process started with pid [75777]
+[INFO] [yamnet_classifier_node-13]: process started with pid [75779]
+[INFO] [sound_event_manager_node-14]: process started with pid [75781]
+[INFO] [clip_transfer_node-15]: process started with pid [75783]
+[INFO] [sound_event_monitor_node-16]: process started with pid [75785]
+[INFO] [secondary_auth_node-17]: process started with pid [75787]
+[INFO] [robot_gui_node-18]: process started with pid [75789]
+[INFO] [realsense2_camera_node-19]: process started with pid [75791]
+[realsense2_camera_node-19] [INFO] [1777550671.144596959] [camera.camera]: RealSense ROS v4.57.7
+[realsense2_camera_node-19] [INFO] [1777550671.153111193] [camera.camera]: Built with LibRealSense v2.57.7
+[realsense2_camera_node-19] [INFO] [1777550671.153200028] [camera.camera]: Running with LibRealSense v2.57.7
+[sound_event_monitor_node-16] [INFO] [1777550671.401851804] [sound_event_monitor_node]: sound_event_monitor_node started
+[realsense2_camera_node-19]  30/04 21:04:32,138 WARNING [281471870023904] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:32,149 WARNING [281471870023904] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:32,159 ERROR [281471870023904] (handle-libusb.h:125) failed to claim usb interface: 0, error: RS2_USB_STATUS_BUSY
+[realsense2_camera_node-19]  30/04 21:04:32,160 ERROR [281472391289056] (uvc-sensor.cpp:428) acquire_power failed: failed to set power state
+[realsense2_camera_node-19]  30/04 21:04:32,200 ERROR [281472391289056] (d400-factory.cpp:1167) Failed to create device for PID 0x0b5c! (failed to set power state)
+[realsense2_camera_node-19]  30/04 21:04:32,374 WARNING [281471878478048] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:32,384 WARNING [281471878478048] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:32,395 ERROR [281471878478048] (handle-libusb.h:125) failed to claim usb interface: 0, error: RS2_USB_STATUS_BUSY
+[realsense2_camera_node-19]  30/04 21:04:32,395 ERROR [281472391289056] (uvc-sensor.cpp:428) acquire_power failed: failed to set power state
+[realsense2_camera_node-19]  30/04 21:04:32,411 ERROR [281472391289056] (rs.cpp:280) [rs2_create_device( info_list:0xffff48022960, index:0 ) UNKNOWN] failed to set power state
+[realsense2_camera_node-19]  30/04 21:04:32,411 ERROR [281472391289056] (rs.cpp:280) [rs2_delete_device( device:nullptr ) UNKNOWN] null pointer passed for argument "device"
+[realsense2_camera_node-19]  30/04 21:04:32,411 WARNING [281472391289056] (rs.cpp:416) null pointer passed for argument "device"
+[realsense2_camera_node-19] [WARN] [1777550672.411882555] [camera.camera]: Device 1/1 failed with exception: failed to set power state
+[realsense2_camera_node-19] [ERROR] [1777550672.412016639] [camera.camera]: The requested device with  is NOT found. Will Try again.
+[respeaker_doa_node-12] [INFO] [1777550672.547538310] [respeaker_doa_node]: respeaker_doa_node started
+[sound_event_manager_node-14] [INFO] [1777550672.550145330] [sound_event_manager_node]: sound_event_manager_node started
+[audio_frontend_node-11] /usr/lib/python3/dist-packages/scipy/__init__.py:146: UserWarning: A NumPy version >=1.17.3 and <1.25.0 is required for this version of SciPy (detected version 1.26.4
+[audio_frontend_node-11]   warnings.warn(f"A NumPy version >={np_minversion} and <{np_maxversion}"
+[person_following_node-6] [INFO] [1777550672.872666661] [person_following_node]: [INIT] PersonFollowingNode | strategy=largest_bbox | max_no_depth_streak=8 | max_frame_age_sec=0.3 | tracks=/person_tracking/tracks_json | target=/person_tracking/follow_target | state=/person_tracking/follow_state
+[patrol_command_bridge-10] [INFO] [1777550673.622589636] [patrol_command_bridge]: PatrolCommandBridge started | server=http://192.168.0.221:8000 | waypoints_topic=/patrol/waypoints_json | command_topic=/patrol/command | reload_waypoints_topic=/patrol/reload_waypoints
+[robot_goal_sender-8] [INFO] [1777550674.081913050] [robot_goal_sender]: RobotGoalSender started | goal_topic=/goal_pose_2d | next_place_topic=/next_place_id | endpoint=http://192.168.0.221:8000/robot/goal
+[robot_pose_sender-7] [INFO] [1777550674.126376689] [robot_pose_sender]: RobotPoseSender started | topic=/robot_pose | status_topic=/robot_status | endpoint=http://192.168.0.221:8000/robot/pose
+[clip_transfer_node-15] [INFO] [1777550674.769734224] [clip_transfer_node]: clip_transfer_node started | server_url=http://192.168.0.221:8000 | pose_topic=/robot_pose
+[can_teacher_node-9] [INFO] [1777550675.214355822] [can_teacher_node]: CAN bus connected: can0
+[can_teacher_node-9] [ERROR] [1777550675.295005735] [can_teacher_node]: CAN loop error: Error receiving: Network is down [Error Code 100]
+[can_teacher_node-9] [INFO] [1777550675.333993341] [can_teacher_node]: CanTeacherNode started | pose_topic=/robot_pose | server=http://192.168.0.221:8000 | can_if=can0 | teach_can_id=0x102
+[secondary_auth_node-17] [INFO] [1777550675.944942653] [secondary_auth_node]: 오디오 믹서 초기화 성공: 오디오 알림이 활성화되었습니다.
+[secondary_auth_node-17] [INFO] [1777550676.015271048] [secondary_auth_node]: warming up pcsc with pcsc_scan...
+[patrol_command_bridge-10] [WARN] [1777550676.735438682] [patrol_command_bridge]: Timeout while fetching patrol waypoints
+[patrol_http_bridge-2] [INFO] [1777550677.276094690] [patrol_http_bridge]: HTTP bridge ready at :8090
+[patrol_http_bridge-2] INFO:     Started server process [75757]
+[patrol_http_bridge-2] INFO:     Waiting for application startup.
+[patrol_http_bridge-2] INFO:     Application startup complete.
+[patrol_http_bridge-2] ERROR:    [Errno 98] error while attempting to bind on address ('0.0.0.0', 8090): address already in use
+[patrol_http_bridge-2] INFO:     Waiting for application shutdown.
+[patrol_http_bridge-2] INFO:     Application shutdown complete.
+[person_detect_control_node-4] /opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py:440: UserWarning: when declaring parameter named 'start_enabled', declaring a parameter only providing its name is deprecated. You have to either:
+[person_detect_control_node-4]  - Pass a name and a default value different to "PARAMETER NOT SET" (and optionally a descriptor).
+[person_detect_control_node-4]  - Pass a name and a parameter type.
+[person_detect_control_node-4]  - Pass a name and a descriptor with `dynamic_typing=True
+[person_detect_control_node-4]   warnings.warn(
+[secondary_auth_node-17] [INFO] [1777550678.134289963] [secondary_auth_node]: pcsc warmup done
+[secondary_auth_node-17] [INFO] [1777550678.137269506] [secondary_auth_node]: SecondaryAuthNode started | server=http://192.168.0.221:8000 | reader_hint=ACR122
+[person_detect_control_node-4] INFO:     Started server process [75761]
+[person_detect_control_node-4] INFO:     Waiting for application startup.
+[person_detect_control_node-4] INFO:     Application startup complete.
+[person_detect_control_node-4] ERROR:    [Errno 98] error while attempting to bind on address ('0.0.0.0', 8091): address already in use
+[person_detect_control_node-4] INFO:     Waiting for application shutdown.
+[person_detect_control_node-4] INFO:     Application shutdown complete.
+[person_detect_control_node-4] [INFO] [1777550678.216592593] [person_detect_control_node]: [INIT] PersonDetectControlNode | robot_pose=/robot_pose | enable_topic=/person_tracking/enable | notify_http=0.0.0.0:8091 | startup_publish=disabled_until_first_config
+[person_detect_control_node-4] [INFO] [1777550678.308272809] [person_detect_control_node]: [YOLO ENABLE] True reason=startup_mode_global
+[person_detect_control_node-4] [INFO] [1777550678.308969117] [person_detect_control_node]: Initial state published: True
+[audio_frontend_node-11] Traceback (most recent call last):
+[audio_frontend_node-11]   File "/home/chan/capston_h3c_integration/install/security_audio_frontend/lib/security_audio_frontend/audio_frontend_node", line 33, in <module>
+[audio_frontend_node-11]     sys.exit(load_entry_point('security-audio-frontend==0.0.1', 'console_scripts', 'audio_frontend_node')())
+[audio_frontend_node-11]   File "/home/chan/capston_h3c_integration/install/security_audio_frontend/lib/python3.10/site-packages/security_audio_frontend/audio_frontend_node.py", line 410, in main
+[audio_frontend_node-11]     node = AudioFrontendNode()
+[audio_frontend_node-11]   File "/home/chan/capston_h3c_integration/install/security_audio_frontend/lib/python3.10/site-packages/security_audio_frontend/audio_frontend_node.py", line 168, in __init__
+[audio_frontend_node-11]     self.device_info = self.resolve_input_device()
+[audio_frontend_node-11]   File "/home/chan/capston_h3c_integration/install/security_audio_frontend/lib/python3.10/site-packages/security_audio_frontend/audio_frontend_node.py", line 204, in resolve_input_device
+[audio_frontend_node-11]     raise RuntimeError(
+[audio_frontend_node-11] RuntimeError: No suitable input device found for name_contains="ReSpeaker" and input_channels=6
+[realsense2_camera_node-19]  30/04 21:04:38,541 WARNING [281471861569760] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:38,551 WARNING [281471861569760] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:38,561 ERROR [281471861569760] (handle-libusb.h:125) failed to claim usb interface: 0, error: RS2_USB_STATUS_BUSY
+[realsense2_camera_node-19]  30/04 21:04:38,562 ERROR [281472391289056] (uvc-sensor.cpp:428) acquire_power failed: failed to set power state
+[realsense2_camera_node-19]  30/04 21:04:38,569 ERROR [281472391289056] (d400-factory.cpp:1167) Failed to create device for PID 0x0b5c! (failed to set power state)
+[realsense2_camera_node-19]  30/04 21:04:38,616 WARNING [281471870023904] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:38,627 WARNING [281471870023904] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:38,637 ERROR [281471870023904] (handle-libusb.h:125) failed to claim usb interface: 0, error: RS2_USB_STATUS_BUSY
+[realsense2_camera_node-19]  30/04 21:04:38,637 ERROR [281472391289056] (uvc-sensor.cpp:428) acquire_power failed: failed to set power state
+[realsense2_camera_node-19]  30/04 21:04:38,647 ERROR [281472391289056] (rs.cpp:280) [rs2_create_device( info_list:0xffff4802a170, index:0 ) UNKNOWN] failed to set power state
+[realsense2_camera_node-19]  30/04 21:04:38,648 ERROR [281472391289056] (rs.cpp:280) [rs2_delete_device( device:nullptr ) UNKNOWN] null pointer passed for argument "device"
+[realsense2_camera_node-19]  30/04 21:04:38,648 WARNING [281472391289056] (rs.cpp:416) null pointer passed for argument "device"
+[realsense2_camera_node-19] [WARN] [1777550678.648529346] [camera.camera]: Device 1/1 failed with exception: failed to set power state
+[realsense2_camera_node-19] [ERROR] [1777550678.648645414] [camera.camera]: The requested device with  is NOT found. Will Try again.
+[patrol_command_bridge-10] [WARN] [1777550678.743409368] [patrol_command_bridge]: Timeout while fetching patrol command
+[person_event_sender_node-5] [INFO] [1777550679.823915306] [person_event_sender_node]: [INIT] PersonEventSenderNode | tracks=/person_tracking/tracks_json | annotated=/person_tracking/annotated | robot_pose=/robot_pose
+[ERROR] [audio_frontend_node-11]: process has died [pid 75775, exit code 1, cmd '/home/chan/capston_h3c_integration/install/security_audio_frontend/lib/security_audio_frontend/audio_frontend_node --ros-args -r __node:=audio_frontend_node --params-file /home/chan/capston_h3c_integration/install/security_audio_frontend/share/security_audio_frontend/config/frontend.yaml'].
+[patrol_command_bridge-10] [WARN] [1777550680.751939590] [patrol_command_bridge]: Timeout while fetching patrol command
+[robot_gui_node-18] [INFO] [1777550680.954904364] [robot_gui_node]: Robot GUI ROS node started
+[robot_gui_node-18] [INFO] [1777550680.957727262] [robot_gui_node]: camera=/person_tracking/annotated
+[robot_gui_node-18] [INFO] [1777550680.965036660] [robot_gui_node]: robot_pose=/robot_pose, robot_status=/robot_status
+[robot_gui_node-18] [INFO] [1777550680.965690151] [robot_gui_node]: goal_pose=/goal_pose_2d, next_place=/next_place_id
+[robot_gui_node-18] [INFO] [1777550680.967332311] [robot_gui_node]: follow_state=/person_tracking/follow_state, auth_ready=/auth_ready
+[robot_gui_node-18] [INFO] [1777550680.968926597] [robot_gui_node]: patrol_command=/patrol/command
+[capture_sender-1] [INFO] [1777550681.041754771] [capture_sender]: server_url     = http://192.168.0.221:8000
+[capture_sender-1] [INFO] [1777550681.042520585] [capture_sender]: signaling_url  = http://192.168.0.221:8001
+[capture_sender-1] [INFO] [1777550681.043095834] [capture_sender]: n_frames       = 5
+[capture_sender-1] [INFO] [1777550681.043667627] [capture_sender]: sample_dt      = 0.2
+[capture_sender-1] [INFO] [1777550681.044206427] [capture_sender]: capture_timeout_s = 5.0
+[capture_sender-1] [INFO] [1777550681.045137302] [capture_sender]: post_timeout_s    = 10.0
+[capture_sender-1] [INFO] [1777550681.114591361] [capture_sender]: capture sender ready
+[patrol_command_bridge-10] [WARN] [1777550682.759505686] [patrol_command_bridge]: Timeout while fetching patrol command
+[patrol_command_bridge-10] [WARN] [1777550684.767286477] [patrol_command_bridge]: Timeout while fetching patrol command
+[realsense2_camera_node-19]  30/04 21:04:44,818 WARNING [281471878478048] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:44,829 WARNING [281471878478048] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:44,839 ERROR [281471878478048] (handle-libusb.h:125) failed to claim usb interface: 0, error: RS2_USB_STATUS_BUSY
+[realsense2_camera_node-19]  30/04 21:04:44,839 ERROR [281472391289056] (uvc-sensor.cpp:428) acquire_power failed: failed to set power state
+[realsense2_camera_node-19]  30/04 21:04:44,840 ERROR [281472391289056] (d400-factory.cpp:1167) Failed to create device for PID 0x0b5c! (failed to set power state)
+[realsense2_camera_node-19]  30/04 21:04:44,892 WARNING [281471861569760] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:44,903 WARNING [281471861569760] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:44,913 ERROR [281471861569760] (handle-libusb.h:125) failed to claim usb interface: 0, error: RS2_USB_STATUS_BUSY
+[realsense2_camera_node-19]  30/04 21:04:44,914 ERROR [281472391289056] (uvc-sensor.cpp:428) acquire_power failed: failed to set power state
+[realsense2_camera_node-19]  30/04 21:04:44,916 ERROR [281472391289056] (rs.cpp:280) [rs2_create_device( info_list:0xffff480409e0, index:0 ) UNKNOWN] failed to set power state
+[realsense2_camera_node-19]  30/04 21:04:44,916 ERROR [281472391289056] (rs.cpp:280) [rs2_delete_device( device:nullptr ) UNKNOWN] null pointer passed for argument "device"
+[realsense2_camera_node-19]  30/04 21:04:44,916 WARNING [281472391289056] (rs.cpp:416) null pointer passed for argument "device"
+[realsense2_camera_node-19] [WARN] [1777550684.916743792] [camera.camera]: Device 1/1 failed with exception: failed to set power state
+[realsense2_camera_node-19] [ERROR] [1777550684.916863507] [camera.camera]: The requested device with  is NOT found. Will Try again.
+[person_tracker_node-3] [INFO] [1777550685.074010004] [person_tracker_node]: Loading YOLO model: /home/chan/capston_h3c_integration/src/patrol_yolo/model/yolov8n.engine
+[person_tracker_node-3] [INFO] [1777550685.119186264] [person_tracker_node]: [MODE] realsense | color_topic=/camera/camera/color/image_raw | depth_topic=/camera/camera/aligned_depth_to_color/image_raw
+[person_tracker_node-3] [INFO] [1777550685.131375675] [person_tracker_node]: [CONTROL] YOLO inference default=ON
+[person_tracker_node-3] [INFO] [1777550685.131976076] [person_tracker_node]: PersonTrackerNode initialized with worker thread.
+[patrol_command_bridge-10] [WARN] [1777550686.778412421] [patrol_command_bridge]: Timeout while fetching patrol command
+[patrol_command_bridge-10] [WARN] [1777550688.784318597] [patrol_command_bridge]: Timeout while fetching patrol command
+[patrol_command_bridge-10] [WARN] [1777550690.791231075] [patrol_command_bridge]: Timeout while fetching patrol command
+[realsense2_camera_node-19]  30/04 21:04:50,975 WARNING [281471870023904] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:50,985 WARNING [281471870023904] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:51,000 ERROR [281471870023904] (handle-libusb.h:125) failed to claim usb interface: 0, error: RS2_USB_STATUS_BUSY
+[realsense2_camera_node-19]  30/04 21:04:51,000 ERROR [281472391289056] (uvc-sensor.cpp:428) acquire_power failed: failed to set power state
+[realsense2_camera_node-19]  30/04 21:04:51,002 ERROR [281472391289056] (d400-factory.cpp:1167) Failed to create device for PID 0x0b5c! (failed to set power state)
+[realsense2_camera_node-19]  30/04 21:04:51,041 WARNING [281471878478048] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:51,051 WARNING [281471878478048] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:51,062 ERROR [281471878478048] (handle-libusb.h:125) failed to claim usb interface: 0, error: RS2_USB_STATUS_BUSY
+[realsense2_camera_node-19]  30/04 21:04:51,062 ERROR [281472391289056] (uvc-sensor.cpp:428) acquire_power failed: failed to set power state
+[realsense2_camera_node-19]  30/04 21:04:51,064 ERROR [281472391289056] (rs.cpp:280) [rs2_create_device( info_list:0xffff480233f0, index:0 ) UNKNOWN] failed to set power state
+[realsense2_camera_node-19]  30/04 21:04:51,064 ERROR [281472391289056] (rs.cpp:280) [rs2_delete_device( device:nullptr ) UNKNOWN] null pointer passed for argument "device"
+[realsense2_camera_node-19]  30/04 21:04:51,064 WARNING [281472391289056] (rs.cpp:416) null pointer passed for argument "device"
+[realsense2_camera_node-19] [WARN] [1777550691.064682279] [camera.camera]: Device 1/1 failed with exception: failed to set power state
+[realsense2_camera_node-19] [ERROR] [1777550691.064799146] [camera.camera]: The requested device with  is NOT found. Will Try again.
+[yamnet_classifier_node-13] [INFO] [1777550691.986732400] [yamnet_classifier_node]: worker ready: {"ready": true, "load_model_sec": 7.397207260131836, "gpus": []}
+[yamnet_classifier_node-13] [INFO] [1777550691.987473638] [yamnet_classifier_node]: yamnet_classifier_node started
+[patrol_command_bridge-10] [WARN] [1777550692.798736179] [patrol_command_bridge]: Timeout while fetching patrol command
+[patrol_command_bridge-10] [WARN] [1777550694.807714190] [patrol_command_bridge]: Timeout while fetching patrol command
+[patrol_command_bridge-10] [WARN] [1777550696.814445513] [patrol_command_bridge]: Timeout while fetching patrol command
+[realsense2_camera_node-19]  30/04 21:04:57,134 WARNING [281471861569760] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:57,147 WARNING [281471861569760] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:57,158 ERROR [281471861569760] (handle-libusb.h:125) failed to claim usb interface: 0, error: RS2_USB_STATUS_BUSY
+[realsense2_camera_node-19]  30/04 21:04:57,158 ERROR [281472391289056] (uvc-sensor.cpp:428) acquire_power failed: failed to set power state
+[realsense2_camera_node-19]  30/04 21:04:57,162 ERROR [281472391289056] (d400-factory.cpp:1167) Failed to create device for PID 0x0b5c! (failed to set power state)
+[realsense2_camera_node-19]  30/04 21:04:57,188 WARNING [281471870023904] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:57,198 WARNING [281471870023904] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:04:57,208 ERROR [281471870023904] (handle-libusb.h:125) failed to claim usb interface: 0, error: RS2_USB_STATUS_BUSY
+[realsense2_camera_node-19]  30/04 21:04:57,208 ERROR [281472391289056] (uvc-sensor.cpp:428) acquire_power failed: failed to set power state
+[realsense2_camera_node-19]  30/04 21:04:57,210 ERROR [281472391289056] (rs.cpp:280) [rs2_create_device( info_list:0xffff48054450, index:0 ) UNKNOWN] failed to set power state
+[realsense2_camera_node-19]  30/04 21:04:57,210 ERROR [281472391289056] (rs.cpp:280) [rs2_delete_device( device:nullptr ) UNKNOWN] null pointer passed for argument "device"
+[realsense2_camera_node-19]  30/04 21:04:57,210 WARNING [281472391289056] (rs.cpp:416) null pointer passed for argument "device"
+[realsense2_camera_node-19] [WARN] [1777550697.210947290] [camera.camera]: Device 1/1 failed with exception: failed to set power state
+[realsense2_camera_node-19] [ERROR] [1777550697.211092479] [camera.camera]: The requested device with  is NOT found. Will Try again.
+[patrol_command_bridge-10] [WARN] [1777550698.824150491] [patrol_command_bridge]: Timeout while fetching patrol command
+[patrol_command_bridge-10] [WARN] [1777550700.829554899] [patrol_command_bridge]: Timeout while fetching patrol command
+[patrol_command_bridge-10] [WARN] [1777550702.837150380] [patrol_command_bridge]: Timeout while fetching patrol command
+[realsense2_camera_node-19]  30/04 21:05:03,285 WARNING [281471878478048] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:05:03,295 WARNING [281471878478048] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:05:03,305 ERROR [281471878478048] (handle-libusb.h:125) failed to claim usb interface: 0, error: RS2_USB_STATUS_BUSY
+[realsense2_camera_node-19]  30/04 21:05:03,305 ERROR [281472391289056] (uvc-sensor.cpp:428) acquire_power failed: failed to set power state
+[realsense2_camera_node-19]  30/04 21:05:03,307 ERROR [281472391289056] (d400-factory.cpp:1167) Failed to create device for PID 0x0b5c! (failed to set power state)
+[realsense2_camera_node-19]  30/04 21:05:03,328 WARNING [281471861569760] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:05:03,338 WARNING [281471861569760] (handle-libusb.h:110) failed to claim usb interface, interface 0, is busy - retrying...
+[realsense2_camera_node-19]  30/04 21:05:03,349 ERROR [281471861569760] (handle-libusb.h:125) failed to claim usb interface: 0, error: RS2_USB_STATUS_BUSY
+[realsense2_camera_node-19]  30/04 21:05:03,349 ERROR [281472391289056] (uvc-sensor.cpp:428) acquire_power failed: failed to set power state
+[realsense2_camera_node-19]  30/04 21:05:03,353 ERROR [281472391289056] (rs.cpp:280) [rs2_create_device( info_list:0xffff480233f0, index:0 ) UNKNOWN] failed to set power state
+[realsense2_camera_node-19]  30/04 21:05:03,353 ERROR [281472391289056] (rs.cpp:280) [rs2_delete_device( device:nullptr ) UNKNOWN] null pointer passed for argument "device"
+[realsense2_camera_node-19]  30/04 21:05:03,353 WARNING [281472391289056] (rs.cpp:416) null pointer passed for argument "device"
+[realsense2_camera_node-19] [WARN] [1777550703.353960485] [camera.camera]: Device 1/1 failed with exception: failed to set power state
+[realsense2_camera_node-19] [ERROR] [1777550703.354087721] [camera.camera]: The requested device with  is NOT found. Will Try again.
+[patrol_command_bridge-10] [WARN] [1777550704.848199082] [patrol_command_bridge]: Timeout while fetching patrol comma
+
+
 chan@ubuntu:~/capston_h3c_integration$ ros2 launch capston_bringup bringup_all.launch.py 
 [INFO] [launch]: All log files can be found below /home/chan/.ros/log/2026-04-30-20-22-11-804351-ubuntu-11948
 [INFO] [launch]: Default logging verbosity is set to INFO
