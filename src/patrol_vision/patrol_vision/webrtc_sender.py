@@ -1,6 +1,7 @@
 # webrtc_sender.py
 import asyncio
 import threading
+import time
 from typing import Optional
 
 import cv2
@@ -11,13 +12,28 @@ import requests
 
 
 class BufferVideoTrack(VideoStreamTrack):
-    def __init__(self, buffer):
+    def __init__(self, buffer, target_fps: float = 10.0, width: int = 640, height: int = 360):
         super().__init__()
         self.buffer = buffer
         self._last_frame: Optional[np.ndarray] = None
 
+        self.target_fps = float(target_fps)
+        self.width = int(width)
+        self.height = int(height)
+        self._last_sent_time = 0.0
+
     async def recv(self):
         pts, time_base = await self.next_timestamp()
+
+        # FPS 제한
+        min_interval = 1.0 / max(self.target_fps, 1.0)
+        now = time.monotonic()
+        elapsed = now - self._last_sent_time
+
+        if elapsed < min_interval:
+            await asyncio.sleep(min_interval - elapsed)
+
+        self._last_sent_time = time.monotonic()
 
         try:
             rgb = await asyncio.to_thread(self.buffer.wait_new, 1.0)
@@ -26,9 +42,9 @@ class BufferVideoTrack(VideoStreamTrack):
             rgb = self._last_frame
 
         if rgb is None:
-            rgb = np.zeros((540, 960, 3), dtype=np.uint8)
+            rgb = np.zeros((self.height, self.width, 3), dtype=np.uint8)
 
-        rgb = cv2.resize(rgb, (960, 540), interpolation=cv2.INTER_AREA)
+        rgb = cv2.resize(rgb, (self.width, self.height), interpolation=cv2.INTER_AREA)
 
         frame = VideoFrame.from_ndarray(rgb, format="rgb24")
         frame.pts = pts
@@ -124,7 +140,7 @@ class WebRTCSender:
                 async def on_icegatheringstatechange():
                     print("[WebRTC] ice gathering state:", pc.iceGatheringState)
 
-                pc.addTrack(BufferVideoTrack(self.buffer))
+                pc.addTrack(BufferVideoTrack(self.buffer, target_fps=15.0, width=640, height=360))
                 print("[WebRTC] track added")
 
                 offer = RTCSessionDescription(
