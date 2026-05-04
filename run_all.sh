@@ -16,6 +16,6 @@ source install/setup.bash
 SERVER_IP=${1:-192.168.0.221}
 ENABLE_GUI=${2:-true}
 
-ros2 launch capston_bringup bringup_all.launch.py \
+taskset -c 4,5,6,7 ros2 launch capston_bringup bringup_all.launch.py \
   server_ip:=$SERVER_IP \
   enable_gui:=$ENABLE_GUI
