@@ -31,7 +31,6 @@ def post_batch(server_url: str, images_rgb: List[np.ndarray], meta: Dict[str, An
     r.raise_for_status()
     return r.json() #서버로부터 받은 json
 
-
 class FrameBuffer:
     def __init__(self):
         self.latest_rgb: Optional[np.ndarray] = None

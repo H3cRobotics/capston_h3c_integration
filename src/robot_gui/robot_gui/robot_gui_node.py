@@ -20,7 +20,7 @@ from geometry_msgs.msg import Pose2D
 from sensor_msgs.msg import Image
 from std_msgs.msg import String, Bool
 
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QPropertyAnimation
 from PyQt5.QtGui import QImage, QPixmap, QFont
 from PyQt5.QtWidgets import (
     QApplication,
@@ -30,6 +30,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QGroupBox,
     QSizePolicy,
+    QGraphicsOpacityEffect,
 )
 
 
@@ -51,7 +52,16 @@ class GuiState:
         self.next_place_id: str = "-"
 
         self.follow_state: str = "unknown"
+
+        # =========================
+        # 2차 인증 상태
+        # =========================
+        # /auth_ready  : 2차 인증 시작 트리거
+        # /auth/result : 2차 인증 처리 결과
         self.auth_ready: bool = False
+        self.auth_result_status: str = "idle"   # idle | waiting | success | fail | timeout | unknown
+        self.auth_event_id: str = "-"
+
         self.patrol_command: str = "unknown"
 
         self.yolo_enable: bool = False
@@ -83,7 +93,10 @@ class RobotGuiRosNode(Node):
         self.declare_parameter("goal_pose_topic", "/goal_pose_2d")
         self.declare_parameter("next_place_topic", "/next_place_id")
         self.declare_parameter("follow_state_topic", "/person_tracking/follow_state")
+
         self.declare_parameter("auth_ready_topic", "/auth_ready")
+        self.declare_parameter("auth_result_topic", "/auth/result")
+
         self.declare_parameter("patrol_command_topic", "/patrol/command")
 
         self.declare_parameter("yolo_enable_topic", "/person_tracking/enable")
@@ -99,7 +112,10 @@ class RobotGuiRosNode(Node):
         goal_pose_topic = self.get_parameter("goal_pose_topic").value
         next_place_topic = self.get_parameter("next_place_topic").value
         follow_state_topic = self.get_parameter("follow_state_topic").value
+
         auth_ready_topic = self.get_parameter("auth_ready_topic").value
+        auth_result_topic = self.get_parameter("auth_result_topic").value
+
         patrol_command_topic = self.get_parameter("patrol_command_topic").value
 
         yolo_enable_topic = self.get_parameter("yolo_enable_topic").value
@@ -115,7 +131,10 @@ class RobotGuiRosNode(Node):
         self.create_subscription(Pose2D, goal_pose_topic, self.goal_pose_cb, 10)
         self.create_subscription(String, next_place_topic, self.next_place_cb, 10)
         self.create_subscription(String, follow_state_topic, self.follow_state_cb, 10)
+
         self.create_subscription(Bool, auth_ready_topic, self.auth_ready_cb, 10)
+        self.create_subscription(String, auth_result_topic, self.auth_result_cb, 10)
+
         self.create_subscription(String, patrol_command_topic, self.patrol_command_cb, 10)
 
         self.create_subscription(Bool, yolo_enable_topic, self.yolo_enable_cb, 10)
@@ -125,6 +144,7 @@ class RobotGuiRosNode(Node):
         self.get_logger().info("Robot GUI ROS node started")
         self.get_logger().info(f"camera={annotated_topic}")
         self.get_logger().info(f"robot_pose={robot_pose_topic}, goal_pose={goal_pose_topic}")
+        self.get_logger().info(f"auth_ready={auth_ready_topic}, auth_result={auth_result_topic}")
         self.get_logger().info(f"map_yaml_path={map_yaml_path}")
 
     # --------------------------
@@ -214,7 +234,42 @@ class RobotGuiRosNode(Node):
         self.state.follow_state = value if value else "unknown"
 
     def auth_ready_cb(self, msg: Bool):
-        self.state.auth_ready = bool(msg.data)
+        ready = bool(msg.data)
+        self.state.auth_ready = ready
+
+        # /auth_ready=True는 2차 인증 시작 트리거이므로 RFID 대기 상태로 표시
+        if ready:
+            self.state.auth_result_status = "waiting"
+            self.state.auth_event_id = "-"
+
+        # /auth_ready=False가 들어오고 아직 결과가 없다면 idle
+        if not ready and self.state.auth_result_status == "waiting":
+            self.state.auth_result_status = "idle"
+
+    def auth_result_cb(self, msg: String):
+        """
+        /auth/result 예시:
+        {
+            "auth_event_id": "...",
+            "status": "success" | "fail" | "timeout"
+        }
+        """
+        try:
+            payload = json.loads(msg.data)
+            auth_event_id = str(payload.get("auth_event_id", "-")).strip()
+            status = str(payload.get("status", "unknown")).strip().lower()
+        except Exception:
+            auth_event_id = "-"
+            status = msg.data.strip().lower()
+
+        if status not in ["success", "fail", "timeout"]:
+            status = "unknown"
+
+        self.state.auth_event_id = auth_event_id if auth_event_id else "-"
+        self.state.auth_result_status = status
+
+        # 결과가 들어왔다는 것은 RFID 대기 상태가 끝났다는 뜻
+        self.state.auth_ready = False
 
     def patrol_command_cb(self, msg: String):
         value = msg.data.strip()
@@ -253,6 +308,9 @@ class SecurityRobotGui(QWidget):
         self.setWindowTitle("Security Patrol Robot GUI")
         self.resize(1250, 900)
 
+        # 팝업 중복 표시 방지용
+        self.last_popup_auth_status = None
+
         self.camera_label = QLabel("Waiting for /person_tracking/annotated ...")
         self.camera_label.setAlignment(Qt.AlignCenter)
         self.camera_label.setMinimumHeight(420)
@@ -278,9 +336,9 @@ class SecurityRobotGui(QWidget):
         self.yolo_enable_label = QLabel()
         self.audio_upload_label = QLabel()
         self.follow_state_label = QLabel()
+        self.auth_state_label = QLabel()
 
         # 일반 상태 텍스트
-        self.auth_state_label = QLabel()
         self.command_label = QLabel()
         self.audio_labels_label = QLabel()
         self.map_info_label = QLabel()
@@ -290,7 +348,6 @@ class SecurityRobotGui(QWidget):
             self.robot_status_label,
             self.goal_pose_label,
             self.next_place_label,
-            self.auth_state_label,
             self.command_label,
             self.audio_labels_label,
             self.map_info_label,
@@ -302,6 +359,7 @@ class SecurityRobotGui(QWidget):
             self.yolo_enable_label,
             self.audio_upload_label,
             self.follow_state_label,
+            self.auth_state_label,
         ]:
             box_label.setAlignment(Qt.AlignCenter)
             box_label.setMinimumHeight(86)
@@ -309,6 +367,7 @@ class SecurityRobotGui(QWidget):
             box_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         self._build_layout()
+        self._build_auth_popup()
 
         self.ui_timer = QTimer(self)
         self.ui_timer.timeout.connect(self.refresh_ui)
@@ -333,21 +392,35 @@ class SecurityRobotGui(QWidget):
         bottom = QHBoxLayout()
         bottom.setSpacing(10)
 
+        # --------------------------
+        # 하단 좌측: Robot State
+        # --------------------------
         robot_box = QGroupBox("Robot State")
         robot_layout = QVBoxLayout()
+        robot_layout.setSpacing(8)
         robot_layout.addWidget(self.robot_pose_label)
         robot_layout.addWidget(self.robot_status_label)
         robot_layout.addWidget(self.map_info_label)
         robot_box.setLayout(robot_layout)
 
+        # --------------------------
+        # 하단 중앙: Goal State
+        # Patrol Command를 여기로 이동
+        # --------------------------
         goal_box = QGroupBox("Goal State")
         goal_layout = QVBoxLayout()
+        goal_layout.setSpacing(8)
         goal_layout.addWidget(self.goal_pose_label)
         goal_layout.addWidget(self.next_place_label)
+        goal_layout.addWidget(self.command_label)
         goal_box.setLayout(goal_layout)
 
-        perception_box = QGroupBox("Tracking / Detection / Audio")
+        # --------------------------
+        # 하단 우측: Tracking / Detection / Auth / Audio
+        # --------------------------
+        perception_box = QGroupBox("Tracking / Detection / Auth / Audio")
         perception_layout = QVBoxLayout()
+        perception_layout.setSpacing(8)
 
         status_row = QHBoxLayout()
         status_row.setSpacing(8)
@@ -357,7 +430,6 @@ class SecurityRobotGui(QWidget):
         perception_layout.addLayout(status_row)
         perception_layout.addWidget(self.follow_state_label)
         perception_layout.addWidget(self.auth_state_label)
-        perception_layout.addWidget(self.command_label)
         perception_layout.addWidget(self.audio_labels_label)
         perception_box.setLayout(perception_layout)
 
@@ -368,6 +440,37 @@ class SecurityRobotGui(QWidget):
         root.addLayout(bottom, stretch=2)
         self.setLayout(root)
 
+    def _build_auth_popup(self):
+        """
+        같은 GUI 창 내부에 뜨는 중앙 오버레이 팝업.
+        새 창이 아니라 SecurityRobotGui의 자식 QLabel이다.
+        """
+        self.auth_popup_label = QLabel(self)
+        self.auth_popup_label.setAlignment(Qt.AlignCenter)
+        self.auth_popup_label.setVisible(False)
+        self.auth_popup_label.setAttribute(Qt.WA_TransparentForMouseEvents)
+
+        self.auth_popup_label.setStyleSheet("""
+            QLabel {
+                background-color: rgba(20, 20, 20, 220);
+                color: white;
+                border: 4px solid white;
+                border-radius: 28px;
+                padding: 28px;
+                font-size: 34px;
+                font-weight: 900;
+            }
+        """)
+
+        self.auth_popup_effect = QGraphicsOpacityEffect(self.auth_popup_label)
+        self.auth_popup_label.setGraphicsEffect(self.auth_popup_effect)
+
+        self.auth_popup_anim = QPropertyAnimation(self.auth_popup_effect, b"opacity")
+        self.auth_popup_anim.setDuration(1800)
+        self.auth_popup_anim.setStartValue(1.0)
+        self.auth_popup_anim.setEndValue(0.0)
+        self.auth_popup_anim.finished.connect(self.auth_popup_label.hide)
+
     # --------------------------
     # Formatting
     # --------------------------
@@ -376,16 +479,6 @@ class SecurityRobotGui(QWidget):
         if x is None or y is None or yaw is None:
             return "x: - | y: - | yaw: -"
         return f"x: {x:.3f} | y: {y:.3f} | yaw: {yaw:.3f}"
-
-    @staticmethod
-    def compute_auth_text(follow_state: str, auth_ready: bool) -> str:
-        normalized = (follow_state or "").strip().upper()
-
-        if normalized == "TRACKING" and auth_ready:
-            return "RFID 대기"
-        if normalized == "TRACKING" and not auth_ready:
-            return "인증 대기 아님"
-        return "idle"
 
     @staticmethod
     def bool_text(value: bool) -> str:
@@ -455,16 +548,152 @@ class SecurityRobotGui(QWidget):
             f"<div style='font-size:24px; font-weight:900; color:{value_color};'>{value_text}</div>"
         )
 
+    def set_auth_box(self, label: QLabel, auth_ready: bool, auth_result_status: str, auth_event_id: str):
+        status = (auth_result_status or "").strip().lower()
+
+        if status == "success":
+            border = "#20c997"
+            bg = "#e8fff6"
+            value_color = "#0f9d58"
+            value_text = "SUCCESS"
+        elif status == "fail":
+            border = "#dc3545"
+            bg = "#fff1f3"
+            value_color = "#d90429"
+            value_text = "FAILED"
+        elif status == "timeout":
+            border = "#f57c00"
+            bg = "#fff6e8"
+            value_color = "#e65100"
+            value_text = "TIMEOUT"
+        elif auth_ready or status == "waiting":
+            border = "#1976d2"
+            bg = "#eef6ff"
+            value_color = "#0d47a1"
+            value_text = "RFID WAITING"
+        elif status == "unknown":
+            border = "#6f42c1"
+            bg = "#f4efff"
+            value_color = "#5a189a"
+            value_text = "UNKNOWN"
+        else:
+            border = "#6c757d"
+            bg = "#f3f4f6"
+            value_color = "#495057"
+            value_text = "IDLE"
+
+        event_text = auth_event_id if auth_event_id else "-"
+
+        label.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg};
+                border: 3px solid {border};
+                border-radius: 14px;
+                padding: 10px;
+                color: #222222;
+            }}
+        """)
+
+        label.setText(
+            f"<div style='font-size:14px; font-weight:700;'>2nd Auth</div>"
+            f"<div style='font-size:24px; font-weight:900; color:{value_color};'>{value_text}</div>"
+            f"<div style='font-size:11px; color:#555;'>event: {event_text}</div>"
+        )
+
     def style_info_label(self, label: QLabel):
+        label.setMinimumHeight(72)
+        label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         label.setStyleSheet("""
             QLabel {
-                background-color: #fafafa;
-                border: 1px solid #d9d9d9;
-                border-radius: 10px;
-                padding: 8px;
-                color: #222222;
+                background-color: #ffffff;
+                border: 2px solid #d0d7de;
+                border-radius: 12px;
+                padding: 10px;
+                color: #111111;
+                font-size: 14px;
+                font-weight: 700;
             }
         """)
+
+    def make_info_html(self, title: str, value: str, value_size: int = 18, value_color: str = "#111111") -> str:
+        return (
+            f"<div style='font-size:13px; color:#555555; font-weight:700;'>{title}</div>"
+            f"<div style='font-size:{value_size}px; font-weight:900; color:{value_color};'>{value}</div>"
+        )
+
+    # --------------------------
+    # Auth popup
+    # --------------------------
+    def show_auth_popup(self, title: str, subtitle: str = "", color: str = "#ffffff"):
+        if subtitle:
+            text = (
+                f"<div style='font-size:38px; font-weight:900; color:{color};'>{title}</div>"
+                f"<div style='font-size:22px; font-weight:700; color:#eeeeee; margin-top:8px;'>{subtitle}</div>"
+            )
+        else:
+            text = f"<div style='font-size:38px; font-weight:900; color:{color};'>{title}</div>"
+
+        self.auth_popup_label.setText(text)
+
+        popup_w = min(760, max(520, int(self.width() * 0.58)))
+        popup_h = 190
+
+        x = int((self.width() - popup_w) / 2)
+        y = int((self.height() - popup_h) / 2)
+
+        self.auth_popup_label.setGeometry(x, y, popup_w, popup_h)
+        self.auth_popup_label.raise_()
+        self.auth_popup_label.show()
+
+        self.auth_popup_effect.setOpacity(1.0)
+
+        self.auth_popup_anim.stop()
+        self.auth_popup_anim.setStartValue(1.0)
+        self.auth_popup_anim.setEndValue(0.0)
+        self.auth_popup_anim.start()
+
+    def handle_auth_popup_event(self):
+        current_auth_status = (self.state.auth_result_status or "").strip().lower()
+
+        if current_auth_status == self.last_popup_auth_status:
+            return
+
+        self.last_popup_auth_status = current_auth_status
+
+        if current_auth_status == "waiting":
+            self.show_auth_popup(
+                "2차 인증 시작",
+                "RFID 카드를 태그하세요",
+                "#4dabf7",
+            )
+        elif current_auth_status == "success":
+            self.show_auth_popup(
+                "인증 성공",
+                "출입 권한이 확인되었습니다",
+                "#20c997",
+            )
+        elif current_auth_status == "fail":
+            self.show_auth_popup(
+                "인증 실패",
+                "등록되지 않은 카드입니다",
+                "#ff4d6d",
+            )
+        elif current_auth_status == "timeout":
+            self.show_auth_popup(
+                "인증 시간 초과",
+                "RFID 태그가 감지되지 않았습니다",
+                "#ffa94d",
+            )
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+
+        if hasattr(self, "auth_popup_label") and self.auth_popup_label.isVisible():
+            popup_w = min(760, max(520, int(self.width() * 0.58)))
+            popup_h = 190
+            x = int((self.width() - popup_w) / 2)
+            y = int((self.height() - popup_h) / 2)
+            self.auth_popup_label.setGeometry(x, y, popup_w, popup_h)
 
     # --------------------------
     # Map transform / drawing
@@ -694,24 +923,77 @@ class SecurityRobotGui(QWidget):
         self.refresh_camera()
         self.refresh_map()
 
+        # 하단 좌측: Robot State
         self.robot_pose_label.setText(
-            "Current Pose\n" + self.fmt_pose(
-                self.state.robot_x,
-                self.state.robot_y,
-                self.state.robot_yaw,
+            self.make_info_html(
+                "Current Pose",
+                self.fmt_pose(
+                    self.state.robot_x,
+                    self.state.robot_y,
+                    self.state.robot_yaw,
+                ),
+                value_size=17,
             )
         )
-        self.robot_status_label.setText(f"Robot Status\n{self.state.robot_status}")
 
+        self.robot_status_label.setText(
+            self.make_info_html(
+                "Robot Status",
+                self.state.robot_status,
+                value_size=18,
+            )
+        )
+
+        if self.state.map_image is None:
+            self.map_info_label.setText(
+                self.make_info_html(
+                    "Map Info",
+                    "NOT LOADED",
+                    value_size=18,
+                    value_color="#d90429",
+                )
+            )
+        else:
+            h, w = self.state.map_image.shape[:2]
+            self.map_info_label.setText(
+                f"<div style='font-size:13px; color:#555555; font-weight:700;'>Map Info</div>"
+                f"<div style='font-size:15px; font-weight:900; color:#111111;'>"
+                f"size: {w}x{h} px<br>"
+                f"res: {self.state.map_resolution} m/px<br>"
+                f"origin: ({self.state.map_origin_x}, {self.state.map_origin_y})"
+                f"</div>"
+            )
+
+        # 하단 중앙: Goal State
         self.goal_pose_label.setText(
-            "Goal Pose\n" + self.fmt_pose(
-                self.state.goal_x,
-                self.state.goal_y,
-                self.state.goal_yaw,
+            self.make_info_html(
+                "Goal Pose",
+                self.fmt_pose(
+                    self.state.goal_x,
+                    self.state.goal_y,
+                    self.state.goal_yaw,
+                ),
+                value_size=17,
             )
         )
-        self.next_place_label.setText(f"Next Place\n{self.state.next_place_id}")
 
+        self.next_place_label.setText(
+            self.make_info_html(
+                "Next Place",
+                self.state.next_place_id,
+                value_size=18,
+            )
+        )
+
+        self.command_label.setText(
+            self.make_info_html(
+                "Patrol Command",
+                self.state.patrol_command,
+                value_size=18,
+            )
+        )
+
+        # 하단 우측: Detection / Tracking / Auth / Audio
         self.set_status_box(
             self.yolo_enable_label,
             "YOLO",
@@ -731,32 +1013,35 @@ class SecurityRobotGui(QWidget):
             self.state.follow_state,
         )
 
-        self.auth_state_label.setText(
-            "Auth State\n" + self.compute_auth_text(
-                self.state.follow_state,
-                self.state.auth_ready,
+        self.set_auth_box(
+            self.auth_state_label,
+            self.state.auth_ready,
+            self.state.auth_result_status,
+            self.state.auth_event_id,
+        )
+
+        # 인증 상태 변화 시 중앙 팝업 표시
+        self.handle_auth_popup_event()
+
+        self.audio_labels_label.setText(
+            self.make_info_html(
+                "Audio Labels",
+                self.state.audio_allowed_labels,
+                value_size=15,
             )
         )
-        self.command_label.setText(f"Patrol Command\n{self.state.patrol_command}")
-        self.audio_labels_label.setText(f"Audio Labels\n{self.state.audio_allowed_labels}")
 
+        # 정보 박스 스타일 적용
         for label in [
-            self.auth_state_label,
+            self.robot_pose_label,
+            self.robot_status_label,
+            self.map_info_label,
+            self.goal_pose_label,
+            self.next_place_label,
             self.command_label,
             self.audio_labels_label,
         ]:
             self.style_info_label(label)
-
-        if self.state.map_image is None:
-            self.map_info_label.setText("Map\nnot loaded")
-        else:
-            h, w = self.state.map_image.shape[:2]
-            self.map_info_label.setText(
-                f"Map\n"
-                f"size: {w}x{h} px | res: {self.state.map_resolution} m/px\n"
-                f"origin: ({self.state.map_origin_x}, {self.state.map_origin_y})"
-            )
-        self.style_info_label(self.map_info_label)
 
     def refresh_camera(self):
         frame = self.state.latest_frame
