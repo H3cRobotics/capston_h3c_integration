@@ -733,3 +733,107 @@ python3 -c "import sys, torch; print(sys.executable); print(torch.__version__); 
 colcon build --packages-select person_tracker_ros
 source install/setup.bash
 ros2 launch person_tracker_ros person_tracker.launch.py
+
+
+odel  package.xml  patrol_yolo  readme.txt  resource  setup.cfg  setup.py
+chan@ubuntu:~/capston_h3c_integration/src/patrol_yolo$ python make_engine.py 
+=== YOLO → TensorRT Export ===
+[INFO] Model not found locally → downloading: yolov26n.pt
+Traceback (most recent call last):
+  File "/home/chan/capston_h3c_integration/src/patrol_yolo/make_engine.py", line 62, in <module>
+    main()
+  File "/home/chan/capston_h3c_integration/src/patrol_yolo/make_engine.py", line 35, in main
+    model = YOLO(args.model)
+  File "/home/chan/.local/lib/python3.10/site-packages/ultralytics/models/yolo/model.py", line 76, in __init__
+    super().__init__(model=model, task=task, verbose=verbose)
+  File "/home/chan/.local/lib/python3.10/site-packages/ultralytics/engine/model.py", line 144, in __init__
+    self._load(model, task=task)
+  File "/home/chan/.local/lib/python3.10/site-packages/ultralytics/engine/model.py", line 283, in _load
+    self.model, self.ckpt = load_checkpoint(weights)
+  File "/home/chan/.local/lib/python3.10/site-packages/ultralytics/nn/tasks.py", line 1515, in load_checkpoint
+    ckpt, weight = torch_safe_load(weight)  # load ckpt
+  File "/home/chan/.local/lib/python3.10/site-packages/ultralytics/nn/tasks.py", line 1463, in torch_safe_load
+    ckpt = torch_load(file, map_location="cpu")
+  File "/home/chan/.local/lib/python3.10/site-packages/ultralytics/utils/patches.py", line 178, in torch_load
+    return torch.load(*args, **kwargs)
+  File "/home/chan/.local/lib/python3.10/site-packages/torch/serialization.py", line 1185, in load
+    with _open_file_like(f, "rb") as opened_file:
+  File "/home/chan/.local/lib/python3.10/site-packages/torch/serialization.py", line 562, in _open_file_like
+    return _open_file(name_or_buffer, mode)
+  File "/home/chan/.local/lib/python3.10/site-packages/torch/serialization.py", line 543, in __init__
+    super().__init__(open(name, mode))
+FileNotFoundError: [Errno 2] No such file or directory: 'yolov26n.pt'
+chan@ubuntu:~/capston_h3c_integration/src/patrol_yolo$ python make_engine.py 
+=== YOLO → TensorRT Export ===
+[INFO] Model not found locally → downloading: yolo26n.pt
+Downloading https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.pt to 'yolo26n.pt': 100% ━━━━━━━━━━━━ 5.3MB 6.1MB/s 0.9s
+Model loaded successfully
+imgsz     : 512
+half      : False
+int8      : False
+workspace : 2.0 GB
+==============================
+Ultralytics 8.4.35 🚀 Python-3.10.12 torch-2.5.0a0+872d972e41.nv24.08 CUDA:0 (Orin, 15655MiB)
+YOLO26n summary (fused): 122 layers, 2,408,932 parameters, 0 gradients, 5.4 GFLOPs
+
+PyTorch: starting from 'yolo26n.pt' with input shape (1, 3, 512, 512) BCHW and output shape(s) (1, 300, 6) (5.3 MB)
+requirements: Ultralytics requirements ['onnxslim>=0.1.71', 'onnxruntime-gpu'] not found, attempting AutoUpdate...
+WARNING ⚠️ Retry 1/2 failed: Command 'pip install --no-cache-dir "onnxslim>=0.1.71" "onnxruntime-gpu" ' returned non-zero exit status 1.
+WARNING ⚠️ Retry 2/2 failed: Command 'pip install --no-cache-dir "onnxslim>=0.1.71" "onnxruntime-gpu" ' returned non-zero exit status 1.
+WARNING ⚠️ requirements: ❌ Command 'pip install --no-cache-dir "onnxslim>=0.1.71" "onnxruntime-gpu" ' returned non-zero exit status 1.
+Defaulting to user installation because normal site-packages is not writeable
+Collecting onnxslim>=0.1.71
+  Downloading onnxslim-0.1.92-py3-none-any.whl.metadata (10 kB)
+ERROR: Could not find a version that satisfies the requirement onnxruntime-gpu (from versions: none)
+
+[notice] A new release of pip is available: 26.0.1 -> 26.1
+[notice] To update, run: python -m pip install --upgrade pip
+ERROR: No matching distribution found for onnxruntime-gpu
+
+
+ONNX: starting export with onnx 1.14.0 opset 17...
+/home/chan/.local/lib/python3.10/site-packages/torch/onnx/symbolic_opset9.py:5645: UserWarning: Exporting aten::index operator of advanced indexing in opset 17 is achieved by combination of multiple ONNX operators, including Reshape, Transpose, Concat, and Gather. If indices include negative values, the exported graph will produce incorrect results.
+  warnings.warn(
+WARNING ⚠️ ONNX: simplifier failure: No module named 'onnxslim'
+ONNX: export success ✅ 6.3s, saved as 'yolo26n.onnx' (9.4 MB)
+
+TensorRT: starting export with TensorRT 10.3.0...
+[05/04/2026-22:06:59] [TRT] [I] [MemUsageChange] Init CUDA: CPU +2, GPU +0, now: CPU 742, GPU 4803 (MiB)
+[05/04/2026-22:07:02] [TRT] [I] [MemUsageChange] Init builder kernel library: CPU +928, GPU +1096, now: CPU 1713, GPU 5945 (MiB)
+[05/04/2026-22:07:02] [TRT] [I] ----------------------------------------------------------------
+[05/04/2026-22:07:02] [TRT] [I] Input filename:   yolo26n.onnx
+[05/04/2026-22:07:02] [TRT] [I] ONNX IR version:  0.0.8
+[05/04/2026-22:07:02] [TRT] [I] Opset version:    17
+[05/04/2026-22:07:02] [TRT] [I] Producer name:    pytorch
+[05/04/2026-22:07:02] [TRT] [I] Producer version: 2.5.0
+[05/04/2026-22:07:02] [TRT] [I] Domain:           
+[05/04/2026-22:07:02] [TRT] [I] Model version:    0
+[05/04/2026-22:07:02] [TRT] [I] Doc string:       
+[05/04/2026-22:07:02] [TRT] [I] ----------------------------------------------------------------
+TensorRT: input "images" with shape(1, 3, 512, 512) DataType.FLOAT
+TensorRT: output "output0" with shape(1, 300, 6) DataType.FLOAT
+TensorRT: building FP32 engine as yolo26n.engine
+[05/04/2026-22:07:02] [TRT] [I] Local timing cache in use. Profiling results in this builder pass will not be stored.
+[05/04/2026-22:09:32] [TRT] [I] [GraphReduction] The approximate region cut reduction algorithm is called.
+[05/04/2026-22:09:32] [TRT] [I] Detected 1 inputs and 1 output network tensors.
+[05/04/2026-22:09:34] [TRT] [I] Total Host Persistent Memory: 615088
+[05/04/2026-22:09:34] [TRT] [I] Total Device Persistent Memory: 0
+[05/04/2026-22:09:34] [TRT] [I] Total Scratch Memory: 1925120
+[05/04/2026-22:09:34] [TRT] [I] [BlockAssignment] Started assigning block shifts. This will take 261 steps to complete.
+[05/04/2026-22:09:34] [TRT] [I] [BlockAssignment] Algorithm ShiftNTopDown took 30.0142ms to assign 11 blocks to 261 nodes requiring 11420160 bytes.
+[05/04/2026-22:09:34] [TRT] [I] Total Activation Memory: 11419648
+[05/04/2026-22:09:34] [TRT] [I] Total Weights Memory: 9799936
+[05/04/2026-22:09:34] [TRT] [I] Engine generation completed in 152.68 seconds.
+[05/04/2026-22:09:34] [TRT] [I] [MemUsageStats] Peak memory usage of TRT CPU/GPU memory allocators: CPU 1 MiB, GPU 32 MiB
+[05/04/2026-22:09:34] [TRT] [I] [MemUsageStats] Peak memory usage during Engine building and serialization: CPU: 2912 MiB
+TensorRT: export success ✅ 163.0s, saved as 'yolo26n.engine' (11.4 MB)
+
+Export complete (165.0s)
+Results saved to /home/chan/capston_h3c_integration/src/patrol_yolo
+Predict:         yolo predict task=detect model=yolo26n.engine imgsz=512 
+Validate:        yolo val task=detect model=yolo26n.engine imgsz=512 data=/home/lq/codes/ultralytics/ultralytics/cfg/datasets/coco.yaml  
+Visualize:       https://netron.app
+
+✅ Export finished!
+→ TensorRT .engine file 생성됨
+chan@ubuntu:~/capston_h3c_integration/src/patrol_yolo$ 
