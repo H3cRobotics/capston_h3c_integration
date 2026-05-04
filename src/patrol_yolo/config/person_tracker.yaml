@@ -12,12 +12,12 @@ person_tracker_node:
     realsense_depth_topic: "/camera/camera/aligned_depth_to_color/image_raw"
     camera_info_topic: "/camera/camera/color/camera_info"
 
-    model_path: "/home/chan/capston_h3c_integration/src/patrol_yolo/model/yolov8s.engine"  # 후에 절대경로로 수정
+    model_path: "/home/chan/capston_h3c_integration/src/patrol_yolo/model/yolov8n.engine"  # 후에 절대경로로 수정
     tracker_cfg: "/home/chan/capston_h3c_integration/src/patrol_yolo/config/bytetrack.yaml" # 후에 절대경로로 수정
     conf_thres: 0.35
     iou_thres: 0.45
     use_gpu: true
-    imgsz: 544
+    imgsz: 560
 
     enable_topic: "/person_tracking/enable"
 
@@ -45,19 +45,23 @@ person_following_node:
 
     target_topic: "/person_tracking/follow_target"
     state_topic: "/person_tracking/follow_state"
+    person_id_topic: "/person_tracking/follow_person_id"
 
     target_strategy: "largest_bbox"
-
     frame_center_u: 640
 
     min_confidence: 0.35
-    min_bbox_w: 40
-    min_bbox_h: 80
+    min_bbox_w: 30
+    min_bbox_h: 60
 
-    min_stable_hits: 3
-    lost_timeout_sec: 3.0
-    id_switch_debounce_sec: 0.8
-    max_no_depth_streak: 8
-    max_frame_age_sec: 0.3
+    min_stable_hits: 2
+    lost_timeout_sec: 5.0
+    id_switch_debounce_sec: 1.5
+    max_no_depth_streak: 10
+    target_hold_sec: 1.0
+    max_frame_age_sec: 0.5
+
+    recover_max_dist_px: 150.0
+    position_recover_max_age_sec: 1.0
 
     state_publish_hz: 10.0

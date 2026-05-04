@@ -14,11 +14,10 @@ PersonFollowingNode
       값 : IDLE | TRACKING | LOST
       → state_publish_hz로 주기적으로 고정 발행
 
-    /person_tracking/follow_person_id   (std_msgs/String)
-    값: 현재 추적 중인 대상의 ByteTrack ID (예: "7")
-    타겟 없으면 ""
-    인증 이벤트와 tracking 대상 매칭용 식별자
-    state_publish_hz 주기로 follow_state와 함께 발행
+  /person_tracking/follow_person_id   (std_msgs/String)
+      값: 현재 추적 중인 대상의 ByteTrack ID
+      타겟 없으면 ""
+      인증 이벤트와 tracking 대상 매칭용 식별자
 
 구독 토픽
   /person_tracking/tracks_json   (std_msgs/String, JSON)
@@ -26,21 +25,18 @@ PersonFollowingNode
 
 FSM 전이
   IDLE
-    └─ stable 감지 + depth 유효 (동시 충족) >  TRACKING
+    └─ stable 감지 + depth 유효 ─────────────► TRACKING
+
   TRACKING
-    ├─ 타겟 소실 (프레임 내 미검출) >  LOST
-    ├─ depth 연속 N프레임 없음(멀어짐) > LOST
-    └─ YOLO 비활성화 > IDLE
+    ├─ 타겟 ID가 안 보임
+    │    ├─ 위치 기반 recovery 성공 ─────────► TRACKING 유지
+    │    └─ recovery 실패 ───────────────────► LOST
+    ├─ depth 연속 N프레임 없음 ─────────────► LOST
+    └─ YOLO 비활성화 ───────────────────────► IDLE
+
   LOST
-    ├─ 타겟 재발견 + depth 유효 ──────────────► TRACKING
-    └─ lost_timeout_sec 초과 ────────────────► IDLE
-
-
-타겟 선택 전략 (target_strategy 파라미터)
-  largest_bbox  : bbox 면적 최대 = 가장 가까운(크게 보이는) 사람 
-
-  확정 후에는 해당 ID가 사라지기 전까지 교체하지 않음
-  ID가 사라지면 LOST → 타임아웃 후 IDLE에서 재선택
+    ├─ 기존 target_id 재발견 + depth 유효 ──► TRACKING
+    └─ lost_timeout_sec 초과 ───────────────► IDLE
 """
 
 import json
@@ -54,15 +50,24 @@ from rclpy.node import Node
 from std_msgs.msg import String, Bool
 from geometry_msgs.msg import PointStamped
 
+
 # FSM 상태 상수
-IDLE     = "IDLE"
+IDLE = "IDLE"
 TRACKING = "TRACKING"
-LOST     = "LOST"
+LOST = "LOST"
 
 
 def _bbox_area(bbox_xyxy: List[int]) -> float:
     x1, y1, x2, y2 = bbox_xyxy
     return float(max(0, x2 - x1) * max(0, y2 - y1))
+
+
+def _has_depth(track: dict) -> bool:
+    return (
+        "X_cam" in track and
+        "Y_cam" in track and
+        "Z_cam" in track
+    )
 
 
 class PersonFollowingNode(Node):
@@ -71,111 +76,154 @@ class PersonFollowingNode(Node):
         super().__init__("person_following_node")
 
         # ── 파라미터 선언 ────────────────────────────────────────────────
-        self.declare_parameter("tracks_topic",            "/person_tracking/tracks_json")
-        self.declare_parameter("enable_topic",            "/person_tracking/enable")
-        self.declare_parameter("target_topic",            "/person_tracking/follow_target")
-        self.declare_parameter("state_topic",             "/person_tracking/follow_state")
+        self.declare_parameter("tracks_topic", "/person_tracking/tracks_json")
+        self.declare_parameter("enable_topic", "/person_tracking/enable")
+        self.declare_parameter("target_topic", "/person_tracking/follow_target")
+        self.declare_parameter("state_topic", "/person_tracking/follow_state")
         self.declare_parameter("person_id_topic", "/person_tracking/follow_person_id")
 
         # 대상 선택 전략: "largest_bbox" | "center" | "first_seen"
-        self.declare_parameter("target_strategy",         "largest_bbox")
+        self.declare_parameter("target_strategy", "largest_bbox")
 
         # 픽셀 기준 화면 중앙 (center 전략 전용)
-        self.declare_parameter("frame_center_u",          640) # 1280x720 기준
+        self.declare_parameter("frame_center_u", 640)
 
         # 트랙 필터
-        self.declare_parameter("min_confidence",          0.5)
-        self.declare_parameter("min_bbox_w",              40)
-        self.declare_parameter("min_bbox_h",              80)
+        self.declare_parameter("min_confidence", 0.5)
+        self.declare_parameter("min_bbox_w", 40)
+        self.declare_parameter("min_bbox_h", 80)
 
         # 안정화: N프레임 연속 감지 후 TRACKING 전환
-        self.declare_parameter("min_stable_hits",         3)
+        self.declare_parameter("min_stable_hits", 3)
 
         # LOST → IDLE 타임아웃
-        self.declare_parameter("lost_timeout_sec",        3.0)
+        self.declare_parameter("lost_timeout_sec", 3.0)
 
         # 타겟 ID 스위칭 방지 debounce
-        self.declare_parameter("id_switch_debounce_sec",  0.8)
+        self.declare_parameter("id_switch_debounce_sec", 0.8)
 
         # depth 없음 허용 연속 프레임 수. 초과 시 TRACKING → LOST
-        self.declare_parameter("max_no_depth_streak",     3)
+        self.declare_parameter("max_no_depth_streak", 3)
 
-        # depth 없을 시에 잠시 이전의 좌표를 씀
+        # depth 없을 시 잠시 이전 좌표를 재사용
         self.declare_parameter("target_hold_sec", 0.5)
 
-        self.target_hold_sec = float(self.get_parameter("target_hold_sec").value)
+        # ByteTrack ID가 바뀌었을 때 bbox 중심 거리 기반 recovery
+        self.declare_parameter("recover_max_dist_px", 150.0)
 
-        self.last_valid_target_track: Optional[dict] = None
-        self.last_valid_target_time: float = 0.0
+        # 위치 recovery에 사용할 last_seen 유효 시간
+        self.declare_parameter("position_recover_max_age_sec", 1.0)
 
         # stale frame drop: tracks_json header stamp 기준
-        # 현재 시각과의 차이가 이 값을 초과하면 해당 프레임을 무시
-        self.declare_parameter("max_frame_age_sec",       0.3)
+        self.declare_parameter("max_frame_age_sec", 0.3)
 
         # 상태 퍼블리시 주기
-        self.declare_parameter("state_publish_hz",        10.0)
+        self.declare_parameter("state_publish_hz", 10.0)
 
         # ── 파라미터 읽기 ────────────────────────────────────────────────
-        self.tracks_topic           = str(self.get_parameter("tracks_topic").value)
-        self.enable_topic           = str(self.get_parameter("enable_topic").value)
-        self.target_topic           = str(self.get_parameter("target_topic").value)
-        self.state_topic            = str(self.get_parameter("state_topic").value)
+        self.tracks_topic = str(self.get_parameter("tracks_topic").value)
+        self.enable_topic = str(self.get_parameter("enable_topic").value)
+        self.target_topic = str(self.get_parameter("target_topic").value)
+        self.state_topic = str(self.get_parameter("state_topic").value)
         self.person_id_topic = str(self.get_parameter("person_id_topic").value)
 
-        self.target_strategy        = str(self.get_parameter("target_strategy").value)
-        self.frame_center_u         = int(self.get_parameter("frame_center_u").value)
+        self.target_strategy = str(self.get_parameter("target_strategy").value)
+        self.frame_center_u = int(self.get_parameter("frame_center_u").value)
 
-        self.min_confidence         = float(self.get_parameter("min_confidence").value)
-        self.min_bbox_w             = int(self.get_parameter("min_bbox_w").value)
-        self.min_bbox_h             = int(self.get_parameter("min_bbox_h").value)
+        self.min_confidence = float(self.get_parameter("min_confidence").value)
+        self.min_bbox_w = int(self.get_parameter("min_bbox_w").value)
+        self.min_bbox_h = int(self.get_parameter("min_bbox_h").value)
 
-        self.min_stable_hits        = int(self.get_parameter("min_stable_hits").value)
-        self.lost_timeout_sec       = float(self.get_parameter("lost_timeout_sec").value)
-        self.id_switch_debounce_sec = float(self.get_parameter("id_switch_debounce_sec").value)
-        self.max_no_depth_streak    = int(self.get_parameter("max_no_depth_streak").value)
-        self.max_frame_age_sec      = float(self.get_parameter("max_frame_age_sec").value)
+        self.min_stable_hits = int(self.get_parameter("min_stable_hits").value)
+        self.lost_timeout_sec = float(self.get_parameter("lost_timeout_sec").value)
+        self.id_switch_debounce_sec = float(
+            self.get_parameter("id_switch_debounce_sec").value
+        )
+        self.max_no_depth_streak = int(
+            self.get_parameter("max_no_depth_streak").value
+        )
+        self.target_hold_sec = float(self.get_parameter("target_hold_sec").value)
+        self.recover_max_dist_px = float(
+            self.get_parameter("recover_max_dist_px").value
+        )
+        self.position_recover_max_age_sec = float(
+            self.get_parameter("position_recover_max_age_sec").value
+        )
+        self.max_frame_age_sec = float(self.get_parameter("max_frame_age_sec").value)
 
-        state_hz                    = float(self.get_parameter("state_publish_hz").value)
+        state_hz = float(self.get_parameter("state_publish_hz").value)
 
         # ── FSM 상태 ─────────────────────────────────────────────────────
         self._lock = threading.Lock()
 
-        self.state:            str            = IDLE
-        self.inference_enabled: bool          = True
+        self.state: str = IDLE
+        self.inference_enabled: bool = True
 
-        self.target_id:          Optional[int]   = None
-        self.lost_start_time:    Optional[float] = None
-        self.last_id_switch_time: float          = 0.0
+        self.target_id: Optional[int] = None
+        self.lost_start_time: Optional[float] = None
+        self.last_id_switch_time: float = 0.0
 
-        # 후보 id → 연속 감지 횟수 (안정화용)  ← _lock 으로 보호
+        # 후보 id → 연속 감지 횟수
         self.candidate_hits: Dict[int, int] = {}
 
-        # 타겟의 depth 없음 연속 프레임 카운터  ← _lock 으로 보호
+        # 타겟 depth 없음 연속 프레임 카운터
         self.no_depth_streak: int = 0
+
+        # 마지막 유효 3D target. depth hold용.
+        self.last_valid_target_track: Optional[dict] = None
+        self.last_valid_target_time: float = 0.0
+
+        # 마지막으로 화면에서 본 target. ID recovery용.
+        self.last_seen_target_track: Optional[dict] = None
+        self.last_seen_target_time: float = 0.0
 
         # ── ROS 통신 ─────────────────────────────────────────────────────
         self.tracks_sub = self.create_subscription(
-            String, self.tracks_topic, self._tracks_callback, 10)
+            String,
+            self.tracks_topic,
+            self._tracks_callback,
+            10,
+        )
 
         self.enable_sub = self.create_subscription(
-            Bool, self.enable_topic, self._enable_callback, 10)
+            Bool,
+            self.enable_topic,
+            self._enable_callback,
+            10,
+        )
 
         self.target_pub = self.create_publisher(
-            PointStamped, self.target_topic, 10)
+            PointStamped,
+            self.target_topic,
+            10,
+        )
 
         self.state_pub = self.create_publisher(
-            String, self.state_topic, 10)
-        
+            String,
+            self.state_topic,
+            10,
+        )
+
         self.person_id_pub = self.create_publisher(
-            String, self.person_id_topic, 10
+            String,
+            self.person_id_topic,
+            10,
         )
 
         self.state_timer = self.create_timer(
-            1.0 / state_hz, self._publish_state)
+            1.0 / state_hz,
+            self._publish_state,
+        )
 
         self.get_logger().info(
             f"[INIT] PersonFollowingNode | "
             f"strategy={self.target_strategy} | "
+            f"min_conf={self.min_confidence} | "
+            f"min_bbox=({self.min_bbox_w},{self.min_bbox_h}) | "
+            f"min_stable_hits={self.min_stable_hits} | "
+            f"lost_timeout={self.lost_timeout_sec} | "
+            f"recover_max_dist_px={self.recover_max_dist_px} | "
+            f"position_recover_max_age_sec={self.position_recover_max_age_sec} | "
             f"max_no_depth_streak={self.max_no_depth_streak} | "
             f"max_frame_age_sec={self.max_frame_age_sec} | "
             f"tracks={self.tracks_topic} | "
@@ -184,7 +232,7 @@ class PersonFollowingNode(Node):
         )
 
     # ────────────────────────────────────────────────────────────────────
-    # SUB callback
+    # SUB callbacks
 
     def _enable_callback(self, msg: Bool):
         with self._lock:
@@ -210,21 +258,22 @@ class PersonFollowingNode(Node):
 
         with self._lock:
             enabled = self.inference_enabled
+
         if not enabled:
             return
 
-        tracks      = payload.get("tracks", [])
+        tracks = payload.get("tracks", [])
         header_dict = payload.get("header", {})
-        now         = time.time()
+        now = time.time()
 
-        stamp_sec  = int(header_dict.get("stamp_sec",  0))
+        stamp_sec = int(header_dict.get("stamp_sec", 0))
         stamp_nsec = int(header_dict.get("stamp_nanosec", 0))
         frame_time = stamp_sec + stamp_nsec * 1e-9
-        age_sec    = now - frame_time
+        age_sec = now - frame_time
 
         if frame_time > 0 and age_sec > self.max_frame_age_sec:
             self.get_logger().debug(
-                f"[STALE] frame dropped  age={age_sec:.3f}s > {self.max_frame_age_sec}s"
+                f"[STALE] frame dropped age={age_sec:.3f}s > {self.max_frame_age_sec}s"
             )
             return
 
@@ -234,7 +283,6 @@ class PersonFollowingNode(Node):
             self._handle_no_detection(now)
             return
 
-        # ── 후보 hits 갱신 (lock 보호) ───────────────────────────────────
         self._update_candidate_hits(valid)
         chosen = self._select_target(valid)
 
@@ -243,49 +291,102 @@ class PersonFollowingNode(Node):
             return
 
         chosen_id = int(chosen.get("person_id", -1))
-        chosen_has_depth = ("X_cam" in chosen and
-                            "Y_cam" in chosen and
-                            "Z_cam" in chosen)
+        chosen_has_depth = _has_depth(chosen)
 
-        # TRACKING 진입 조건: stable + depth valid 동시 충족 ──
+        # ── FSM 진입 / 복귀 / 스위칭 ────────────────────────────────────
         with self._lock:
-            stable     = self.candidate_hits.get(chosen_id, 0) >= self.min_stable_hits
+            stable = self.candidate_hits.get(chosen_id, 0) >= self.min_stable_hits
             can_switch = self._can_switch_id_locked(chosen_id, now)
 
-            if stable and can_switch and chosen_has_depth:
+            # LOST 상태에서 기존 target_id가 다시 보이고 depth가 있으면 즉시 복귀
+            if (
+                self.state == LOST
+                and self.target_id == chosen_id
+                and chosen_has_depth
+            ):
+                self.state = TRACKING
+                self.lost_start_time = None
+                self.no_depth_streak = 0
+                self.candidate_hits[chosen_id] = max(
+                    self.candidate_hits.get(chosen_id, 0),
+                    self.min_stable_hits,
+                )
+                self.get_logger().info(
+                    f"[FSM] LOST → TRACKING (reacquired id={chosen_id})"
+                )
+
+            # IDLE 또는 새 타겟 진입/전환
+            elif stable and can_switch and chosen_has_depth:
                 if self.target_id != chosen_id:
                     self.get_logger().info(
                         f"[FSM] target id: {self.target_id} → {chosen_id}"
                     )
-                    self.target_id           = chosen_id
+                    self.target_id = chosen_id
                     self.last_id_switch_time = now
-                    self.no_depth_streak     = 0  
+                    self.no_depth_streak = 0
 
-                self.state           = TRACKING
+                self.state = TRACKING
                 self.lost_start_time = None
 
-            current_state  = self.state
+            current_state = self.state
             current_target = self.target_id
 
-        # ── TRACKING 상태: 타겟 depth 확인 후 퍼블리시 ──────────────────
+        # TRACKING 상태가 아니면 여기서 종료
         if current_state != TRACKING or current_target is None:
             return
 
-        matched = [t for t in valid if int(t.get("person_id", -1)) == current_target]
+        # ── 현재 target_id 매칭 ─────────────────────────────────────────
+        matched = [
+            t for t in valid
+            if int(t.get("person_id", -1)) == current_target
+        ]
 
         if not matched:
-            # 타겟이 이 프레임에서 사라짐 → LOST
-            with self._lock:
-                self.state           = LOST
-                self.lost_start_time = now
-                self.no_depth_streak = 0   # ← lock 안에서 리셋
-            self.get_logger().info("[FSM] TRACKING → LOST (target missing in frame)")
-            return
+            recovered = self._find_by_position(
+                valid,
+                self.recover_max_dist_px,
+            )
 
-        target_track = matched[0]
-        has_depth    = ("X_cam" in target_track and
-                        "Y_cam" in target_track and
-                        "Z_cam" in target_track)
+            if recovered is not None:
+                recovered_id = int(recovered.get("person_id", -1))
+
+                with self._lock:
+                    old_id = self.target_id
+                    self.target_id = recovered_id
+                    self.last_id_switch_time = now
+                    self.state = TRACKING
+                    self.lost_start_time = None
+                    self.no_depth_streak = 0
+                    self.last_seen_target_track = dict(recovered)
+                    self.last_seen_target_time = now
+                    self.candidate_hits[recovered_id] = self.min_stable_hits
+
+                self.get_logger().info(
+                    f"[RECOVER] target id recovered by position: {old_id} → {recovered_id}"
+                )
+
+                target_track = recovered
+
+            else:
+                with self._lock:
+                    self.state = LOST
+                    self.lost_start_time = now
+                    self.no_depth_streak = 0
+
+                self.get_logger().info(
+                    "[FSM] TRACKING → LOST (target missing in frame)"
+                )
+                return
+
+        else:
+            target_track = matched[0]
+
+        has_depth = _has_depth(target_track)
+
+        # 화면에서 본 마지막 타겟은 depth 여부와 관계없이 저장
+        with self._lock:
+            self.last_seen_target_track = dict(target_track)
+            self.last_seen_target_time = now
 
         if has_depth:
             with self._lock:
@@ -294,6 +395,11 @@ class PersonFollowingNode(Node):
                     "X_cam": float(target_track["X_cam"]),
                     "Y_cam": float(target_track["Y_cam"]),
                     "Z_cam": float(target_track["Z_cam"]),
+                    "u": int(target_track.get("u", 0)),
+                    "v": int(target_track.get("v", 0)),
+                    "person_id": int(target_track.get("person_id", -1)),
+                    "bbox_xyxy": target_track.get("bbox_xyxy"),
+                    "confidence": float(target_track.get("confidence", 0.0)),
                 }
                 self.last_valid_target_time = now
 
@@ -329,13 +435,16 @@ class PersonFollowingNode(Node):
                     self.no_depth_streak = 0
                     self.last_valid_target_track = None
                     self.last_valid_target_time = 0.0
+                    self.last_seen_target_track = None
+                    self.last_seen_target_time = 0.0
 
                 self.get_logger().info(
                     f"[FSM] TRACKING → LOST "
                     f"(no depth for {max_streak} consecutive frames)"
                 )
+
     # ────────────────────────────────────────────────────────────────────
-    # FSM 헬퍼
+    # FSM helpers
 
     def _handle_no_detection(self, now: float):
         """valid 트랙이 없을 때 FSM 처리."""
@@ -344,19 +453,23 @@ class PersonFollowingNode(Node):
 
         if state == TRACKING:
             with self._lock:
-                self.state           = LOST
+                self.state = LOST
                 self.lost_start_time = now
-                self.no_depth_streak = 0  
+                self.no_depth_streak = 0
             self.get_logger().info("[FSM] TRACKING → LOST (no valid detection)")
 
         elif state == LOST:
             with self._lock:
                 t0 = self.lost_start_time
+
             if t0 is not None and (now - t0) > self.lost_timeout_sec:
                 self._reset_to_idle("lost_timeout")
+                return
 
+        # IDLE일 때만 후보 히스토리 제거
         with self._lock:
-            self.candidate_hits.clear()   
+            if self.state == IDLE:
+                self.candidate_hits.clear()
 
     def _reset_to_idle(self, reason: str):
         with self._lock:
@@ -367,7 +480,9 @@ class PersonFollowingNode(Node):
             self.candidate_hits.clear()
             self.last_valid_target_track = None
             self.last_valid_target_time = 0.0
-        self.get_logger().info(f"[FSM] → IDLE  reason={reason}")
+            self.last_seen_target_track = None
+            self.last_seen_target_time = 0.0
+        self.get_logger().info(f"[FSM] → IDLE reason={reason}")
 
     def _can_switch_id_locked(self, new_id: int, now: float) -> bool:
         """ID 스위칭 debounce 판별. _lock 보유 상태에서 호출."""
@@ -376,11 +491,15 @@ class PersonFollowingNode(Node):
         return (now - self.last_id_switch_time) >= self.id_switch_debounce_sec
 
     def _update_candidate_hits(self, valid: list):
-        """이번 프레임에 보인 id +1, 안 보인 id 제거. _lock 으로 보호."""
+        """
+        이번 프레임에 보인 id +1, 안 보인 id 제거.
+        """
         seen_ids = {int(t.get("person_id", -1)) for t in valid}
         with self._lock:
             new_hits: Dict[int, int] = {}
             for pid in seen_ids:
+                if pid < 0:
+                    continue
                 new_hits[pid] = self.candidate_hits.get(pid, 0) + 1
             self.candidate_hits = new_hits
 
@@ -390,50 +509,110 @@ class PersonFollowingNode(Node):
     def _filter_tracks(self, tracks: list) -> list:
         """신뢰도, bbox 크기 기준으로 유효 트랙만 반환."""
         result = []
+
         for t in tracks:
             if float(t.get("confidence", 0.0)) < self.min_confidence:
                 continue
+
             if int(t.get("person_id", -1)) == -1:
                 continue
+
             bbox = t.get("bbox_xyxy")
             if not isinstance(bbox, list) or len(bbox) != 4:
                 continue
+
             x1, y1, x2, y2 = bbox
             if (x2 - x1) < self.min_bbox_w or (y2 - y1) < self.min_bbox_h:
                 continue
+
             result.append(t)
+
         return result
+
+    def _find_by_position(
+        self,
+        valid: list,
+        max_dist_px: float = 150.0,
+    ) -> Optional[dict]:
+        """
+        ByteTrack ID가 바뀌었더라도 이전 target 위치 근처의 bbox를 같은 사람으로 간주.
+        제어 안전성을 위해 depth 있는 후보만 recovery 대상으로 사용.
+        """
+        with self._lock:
+            last = self.last_seen_target_track
+            last_time = self.last_seen_target_time
+
+        if last is None:
+            return None
+
+        now = time.time()
+        if (now - last_time) > self.position_recover_max_age_sec:
+            return None
+
+        last_u = last.get("u")
+        last_v = last.get("v")
+        if last_u is None or last_v is None:
+            return None
+
+        best = None
+        best_dist = float("inf")
+
+        for t in valid:
+            if "u" not in t or "v" not in t:
+                continue
+
+            # follow_target 발행 안정성을 위해 depth 없는 후보는 recovery하지 않음
+            if not _has_depth(t):
+                continue
+
+            du = float(t["u"]) - float(last_u)
+            dv = float(t["v"]) - float(last_v)
+            dist = (du * du + dv * dv) ** 0.5
+
+            if dist < best_dist:
+                best = t
+                best_dist = dist
+
+        if best is not None and best_dist <= max_dist_px:
+            return best
+
+        return None
 
     def _select_target(self, valid: list) -> Optional[dict]:
         """
         타겟 선택 우선순위:
-          1. 현재 target_id가 살아있으면 그대로 유지 (교체 안 함)
+          1. 현재 target_id가 살아있으면 그대로 유지
           2. 없으면 target_strategy 기준으로 새 타겟 선택
 
         전략별 동작:
-          largest_bbox : bbox 면적 최대 → 카메라에 가장 크게 잡힌(가까운) 사람
-                         여러 명일 때 제일 가까운 사람을 follow
-          center       : 화면 중앙에 픽셀 거리 최소 → 정면에 있는 사람
+          largest_bbox : bbox 면적 최대
+          center       : 화면 중앙에 픽셀 거리 최소
+          first_seen   : valid 리스트 첫 번째
         """
         if not valid:
             return None
 
-        # 기존 타겟 유지 우선
         with self._lock:
             cur = self.target_id
 
         if cur is not None:
-            existing = [t for t in valid if int(t.get("person_id", -1)) == cur]
+            existing = [
+                t for t in valid
+                if int(t.get("person_id", -1)) == cur
+            ]
             if existing:
                 return existing[0]
 
-        # 새 타겟 선택
         if self.target_strategy == "largest_bbox":
             return max(valid, key=lambda t: _bbox_area(t["bbox_xyxy"]))
-        elif self.target_strategy == "center":
-            return min(valid, key=lambda t: abs(int(t.get("u", 0)) - self.frame_center_u))
-        else:  # first_seen
-            return valid[0]
+
+        if self.target_strategy == "center":
+            return min(
+                valid,
+                key=lambda t: abs(int(t.get("u", 0)) - self.frame_center_u),
+            )
+
+        return valid[0]
 
     # ────────────────────────────────────────────────────────────────────
     # PUB
@@ -441,14 +620,17 @@ class PersonFollowingNode(Node):
     def _publish_target(self, track: dict):
         """
         geometry_msgs/PointStamped 퍼블리시.
-        has_depth 확인 후 호출되므로 X_cam/Y_cam/Z_cam 존재 보장.
+        X_cam/Y_cam/Z_cam 존재해야 함.
         """
+        if not _has_depth(track):
+            return
+
         pt = PointStamped()
-        pt.header.stamp    = self.get_clock().now().to_msg()
+        pt.header.stamp = self.get_clock().now().to_msg()
         pt.header.frame_id = "camera_color_optical_frame"
-        pt.point.x         = float(track["X_cam"])
-        pt.point.y         = float(track["Y_cam"])
-        pt.point.z         = float(track["Z_cam"])
+        pt.point.x = float(track["X_cam"])
+        pt.point.y = float(track["Y_cam"])
+        pt.point.z = float(track["Z_cam"])
         self.target_pub.publish(pt)
 
     def _publish_state(self):
