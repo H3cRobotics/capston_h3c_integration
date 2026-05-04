@@ -191,7 +191,7 @@ class SecondaryAuthNode(Node):
         self.get_logger().info(f'auth started | tracking_person_id={tracking_person_id} | auth_event_id={auth_event_id}')
         
         # 🟢 서버가 인증을 무사히 접수했으므로 시작음을 울립니다.
-        self.play_sound('start.wav')
+        self.play_sound('/home/chan/capston_h3c_integration/src/rfid/rfid/start.wav')
 
     # =========================
     # 주기 루프
@@ -295,10 +295,10 @@ class SecondaryAuthNode(Node):
 
             # 4. 판정 결과에 따라 직관적인 소리를 냅니다.
             if status == "success":
-                self.play_sound('success.wav')
+                self.play_sound('/home/chan/capston_h3c_integration/src/rfid/rfid/success.wav')
                 self.get_logger().info("✅ 인증 성공! (success.wav 재생)")
             elif status == "fail":
-                self.play_sound('fail.wav')
+                self.play_sound('/home/chan/capston_h3c_integration/src/rfid/rfid/fail.wav')
                 self.get_logger().info("❌ 인증 실패! (fail.wav 재생)")
 
         except Exception as e:
@@ -327,7 +327,7 @@ class SecondaryAuthNode(Node):
             self.get_logger().info(f'/auth/timeout result: {result}')
             
             # 🟢 타임아웃 발생 시에도 어쨌든 실패이므로 알림음을 울립니다.
-            self.play_sound('fail.wav')
+            self.play_sound('/home/chan/capston_h3c_integration/src/rfid/rfid/fail.wav')
             
         except Exception as e:
             self.get_logger().error(f'/auth/timeout failed: {e}')
