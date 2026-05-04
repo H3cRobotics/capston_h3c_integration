@@ -14,7 +14,7 @@ person_tracker_node:
 
     model_path: "/home/chan/capston_h3c_integration/src/patrol_yolo/model/yolov8n.engine"  # 후에 절대경로로 수정
     tracker_cfg: "/home/chan/capston_h3c_integration/src/patrol_yolo/config/bytetrack.yaml" # 후에 절대경로로 수정
-    conf_thres: 0.60
+    conf_thres: 0.35
     iou_thres: 0.45
     use_gpu: true
 
