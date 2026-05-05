@@ -104,6 +104,9 @@ class GuiState:
         self.robot_yaw: Optional[float] = None
         self.robot_status: str = "unknown"
 
+        self.pending_next_place_id: str = "-"
+        self.capture_result_hold_sec: float = 2.5
+
         self.goal_x: Optional[float] = None
         self.goal_y: Optional[float] = None
         self.goal_yaw: Optional[float] = None
@@ -347,8 +350,30 @@ class RobotGuiRosNode(Node):
 
     def next_place_cb(self, msg: String):
         value = msg.data.strip()
+        next_place = value if value else "-"
+
         with self.state.lock:
-            self.state.next_place_id = value if value else "-"
+            self.state.next_place_id = next_place
+
+            if next_place in ["", "-", "None", "none", "NULL", "null"]:
+                self.state.pending_next_place_id = "-"
+                return
+
+            now = time.time()
+            status = (self.state.capture_status or "").strip().upper()
+            elapsed = now - float(self.state.capture_last_time or 0.0)
+
+            # DONE/FAILED 직후에는 결과를 잠깐 보여주기 위해 다음 이동 표시를 보류
+            if status in ["DONE", "FAILED"] and elapsed < self.state.capture_result_hold_sec:
+                self.state.pending_next_place_id = next_place
+                return
+
+            # 충분히 시간이 지났거나 일반 이동이면 바로 MOVING 표시로 전환
+            self.state.pending_next_place_id = "-"
+            self.state.capture_status = "IDLE"
+            self.state.capture_place_id = "-"
+            self.state.capture_last_msg = f"moving:{next_place}"
+            self.state.capture_last_time = now
 
     def follow_state_cb(self, msg: String):
         value = msg.data.strip()
@@ -703,6 +728,44 @@ class SecurityRobotGui(QWidget):
         self.auth_popup_anim.setStartValue(1.0)
         self.auth_popup_anim.setEndValue(0.0)
         self.auth_popup_anim.finished.connect(self.auth_popup_label.hide)
+    
+    def apply_audio_event_timeout(self):
+        with self.state.lock:
+            status = (self.state.audio_event_status or "IDLE").strip().upper()
+
+            if status not in ["DETECTED", "IGNORED"]:
+                return
+
+            elapsed = time.time() - float(self.state.audio_event_last_time or 0.0)
+
+            if elapsed <= self.audio_event_hold_sec:
+                return
+
+            self.state.audio_event_status = "IDLE"
+            self.state.audio_event_label = "-"
+            self.state.audio_event_doa = None
+            self.state.audio_event_id = "-"
+    
+    def apply_pending_next_place_after_hold(self):
+        with self.state.lock:
+            pending_next = self.state.pending_next_place_id
+
+            if pending_next in ["", "-", "None", "none", "NULL", "null"]:
+                return
+
+            status = (self.state.capture_status or "").strip().upper()
+            elapsed = time.time() - float(self.state.capture_last_time or 0.0)
+
+            # DONE/FAILED 표시 유지 시간이 아직 안 지났으면 그대로 둠
+            if status in ["DONE", "FAILED"] and elapsed < self.state.capture_result_hold_sec:
+                return
+
+            # 유지 시간이 지났으면 MOVING TO pending_next 로 넘어가게 상태 초기화
+            self.state.capture_status = "IDLE"
+            self.state.capture_place_id = "-"
+            self.state.capture_last_msg = f"moving:{pending_next}"
+            self.state.capture_last_time = time.time()
+            self.state.pending_next_place_id = "-"
 
     # --------------------------
     # Thread-safe snapshot
@@ -1388,6 +1451,8 @@ class SecurityRobotGui(QWidget):
     # Refresh
     # --------------------------
     def refresh_ui(self):
+        self.apply_pending_next_place_after_hold()
+        self.apply_audio_event_timeout()
         self.ui_state = self.get_state_snapshot()
 
         self.refresh_camera()
