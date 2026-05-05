@@ -106,7 +106,10 @@ class GuiState:
         self.battery_percent: Optional[int] = None
 
         self.pending_next_place_id: str = "-"
-        self.capture_result_hold_sec: float = 2.5
+        self.capture_result_hold_sec: float = 3.0
+
+        self.auth_result_last_time: float = 0.0
+        self.auth_result_hold_sec: float = 5.0
 
         self.goal_x: Optional[float] = None
         self.goal_y: Optional[float] = None
@@ -421,6 +424,7 @@ class RobotGuiRosNode(Node):
             self.state.auth_event_id = auth_event_id if auth_event_id else "-"
             self.state.auth_result_status = status
             self.state.auth_ready = False
+            self.state.auth_result_last_time = time.time()
 
     def patrol_command_cb(self, msg: String):
         value = msg.data.strip()
@@ -747,6 +751,22 @@ class SecurityRobotGui(QWidget):
         self.auth_popup_anim.setStartValue(1.0)
         self.auth_popup_anim.setEndValue(0.0)
         self.auth_popup_anim.finished.connect(self.auth_popup_label.hide)
+    
+    def apply_auth_result_timeout(self):
+        with self.state.lock:
+            status = (self.state.auth_result_status or "idle").strip().lower()
+
+            if status not in ["success", "fail", "timeout", "unknown"]:
+                return
+
+            elapsed = time.time() - float(self.state.auth_result_last_time or 0.0)
+
+            if elapsed <= self.state.auth_result_hold_sec:
+                return
+
+            self.state.auth_result_status = "idle"
+            self.state.auth_event_id = "-"
+            self.state.auth_ready = False
     
     def apply_audio_event_timeout(self):
         with self.state.lock:
@@ -1522,6 +1542,7 @@ class SecurityRobotGui(QWidget):
     def refresh_ui(self):
         self.apply_pending_next_place_after_hold()
         self.apply_audio_event_timeout()
+        self.apply_auth_result_timeout()
         self.ui_state = self.get_state_snapshot()
 
         self.refresh_camera()
