@@ -3,6 +3,7 @@
 import csv
 import math
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -30,15 +31,18 @@ class CalErrerNode(Node):
         self.declare_parameter("status_topic", "/robot_status")
 
         self.declare_parameter(
-            "csv_path",
-            "/home/choisuhyun/scene_ad_for_patrol_robot/control_error_log.csv",
+            "csv_dir",
+            "/home/choisuhyun/scene_ad_for_patrol_robot/control_eval_logs",
         )
 
         self.goal_topic = self.get_parameter("goal_topic").value
         self.pose_topic = self.get_parameter("pose_topic").value
         self.next_place_topic = self.get_parameter("next_place_topic").value
         self.status_topic = self.get_parameter("status_topic").value
-        self.csv_path = Path(self.get_parameter("csv_path").value)
+
+        csv_dir = Path(self.get_parameter("csv_dir").value)
+        run_tag = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.csv_path = csv_dir / f"control_error_log_{run_tag}.csv"
 
         self.current_place_id: Optional[str] = None
         self.current_status: str = "unknown"
@@ -84,38 +88,35 @@ class CalErrerNode(Node):
     def _prepare_csv(self):
         self.csv_path.parent.mkdir(parents=True, exist_ok=True)
 
-        if not self.csv_path.exists():
-            with open(self.csv_path, "w", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow(
-                    [
-                        "place_id",
-                        "finish_trigger",
-                        "start_time",
-                        "duration_sec",
-                        "goal_x",
-                        "goal_y",
-                        "goal_yaw_rad",
-                        "final_x",
-                        "final_y",
-                        "final_yaw_rad",
-                        "final_xy_error_m",
-                        "final_yaw_error_deg",
-                        "min_xy_error_m",
-                        "min_yaw_error_deg",
-                        "mean_xy_error_m",
-                        "mean_yaw_error_deg",
-                        "path_length_m",
-                        "sample_count",
-                        "status",
-                    ]
-                )
+        with open(self.csv_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                [
+                    "place_id",
+                    "finish_trigger",
+                    "start_time",
+                    "duration_sec",
+                    "goal_x",
+                    "goal_y",
+                    "goal_yaw_rad",
+                    "final_x",
+                    "final_y",
+                    "final_yaw_rad",
+                    "final_xy_error_m",
+                    "final_yaw_error_deg",
+                    "min_xy_error_m",
+                    "min_yaw_error_deg",
+                    "mean_xy_error_m",
+                    "mean_yaw_error_deg",
+                    "path_length_m",
+                    "sample_count",
+                    "status",
+                ]
+            )
 
     def next_place_callback(self, msg: String):
         new_place_id = msg.data.strip() or None
 
-        # 이미 평가 중인데 다음 place_id가 새로 들어오면
-        # 이전 goal이 끝났다고 판단
         if self.active and new_place_id != self.current_place_id:
             self.finish_goal(f"NEXT_PLACE_RECEIVED:{new_place_id}")
 
@@ -125,8 +126,6 @@ class CalErrerNode(Node):
         self.current_status = msg.data.strip() or "unknown"
 
     def goal_callback(self, msg: Pose2D):
-        # 새 goal_pose가 오면 새 평가 시작
-        # 기존 평가 중이면 새 goal로 덮이기 전 종료
         if self.active:
             self.finish_goal("NEW_GOAL_RECEIVED")
 
@@ -161,7 +160,10 @@ class CalErrerNode(Node):
         new_yaw = float(msg.theta)
 
         if self.active and self.prev_pose_x is not None and self.prev_pose_y is not None:
-            step_dist = math.hypot(new_x - self.prev_pose_x, new_y - self.prev_pose_y)
+            step_dist = math.hypot(
+                new_x - self.prev_pose_x,
+                new_y - self.prev_pose_y,
+            )
             self.path_length += step_dist
 
         self.pose_x = new_x
@@ -187,6 +189,16 @@ class CalErrerNode(Node):
         self.sample_count += 1
 
     def compute_error(self):
+        if (
+            self.goal_x is None
+            or self.goal_y is None
+            or self.goal_yaw is None
+            or self.pose_x is None
+            or self.pose_y is None
+            or self.pose_yaw is None
+        ):
+            return None, None
+
         dx = self.goal_x - self.pose_x
         dy = self.goal_y - self.pose_y
         xy_error = math.hypot(dx, dy)
@@ -199,16 +211,10 @@ class CalErrerNode(Node):
         if not self.active:
             return
 
-        # 마지막 pose 기준으로 final error 한 번 더 계산
-        if (
-            self.goal_x is not None
-            and self.goal_y is not None
-            and self.goal_yaw is not None
-            and self.pose_x is not None
-            and self.pose_y is not None
-            and self.pose_yaw is not None
-        ):
-            self.final_xy_error, self.final_yaw_error = self.compute_error()
+        xy_error, yaw_error = self.compute_error()
+        if xy_error is not None and yaw_error is not None:
+            self.final_xy_error = xy_error
+            self.final_yaw_error = yaw_error
 
         duration = time.time() - self.start_time_sec if self.start_time_sec else 0.0
 
@@ -236,11 +242,17 @@ class CalErrerNode(Node):
             self.pose_y,
             self.pose_yaw,
             self.final_xy_error,
-            math.degrees(self.final_yaw_error) if self.final_yaw_error is not None else None,
+            math.degrees(self.final_yaw_error)
+            if self.final_yaw_error is not None
+            else None,
             self.min_xy_error if self.min_xy_error != float("inf") else None,
-            math.degrees(self.min_yaw_error) if self.min_yaw_error != float("inf") else None,
+            math.degrees(self.min_yaw_error)
+            if self.min_yaw_error != float("inf")
+            else None,
             mean_xy_error,
-            math.degrees(mean_yaw_error) if mean_yaw_error is not None else None,
+            math.degrees(mean_yaw_error)
+            if mean_yaw_error is not None
+            else None,
             self.path_length,
             self.sample_count,
             self.current_status,
@@ -250,12 +262,18 @@ class CalErrerNode(Node):
             writer = csv.writer(f)
             writer.writerow(row)
 
+        final_yaw_deg = (
+            math.degrees(self.final_yaw_error)
+            if self.final_yaw_error is not None
+            else None
+        )
+
         self.get_logger().info(
             f"[FINISH] place={self.current_place_id} | "
             f"trigger={trigger} | "
             f"duration={duration:.2f}s | "
             f"final_xy={self.final_xy_error} | "
-            f"final_yaw_deg={math.degrees(self.final_yaw_error) if self.final_yaw_error is not None else None}"
+            f"final_yaw_deg={final_yaw_deg}"
         )
 
         self.active = False
