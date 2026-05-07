@@ -29,6 +29,9 @@ setup(
 			    'patrol_command_bridge = patrol_bridge.patrol_command_bridge:main',
                 'dummy_patrol_server_node = patrol_bridge.dummy_patrol_server_node:main',
 
+                # control evaluation
+                'cal_errer_node = patrol_bridge.cal_errer_node:main',
+
                 
 			],
     },
