@@ -32,7 +32,7 @@
     use_vad_gate: false
 
     # refined doa
-    use_refined_doa: true
+    use_refined_doa: false
     refined_doa_use_realtime_fallback: true
     refined_doa_nfft: 256
     refined_doa_mic_radius: 0.032
