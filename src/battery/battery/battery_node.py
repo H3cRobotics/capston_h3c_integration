@@ -94,8 +94,8 @@ class BatteryNode(Node):
 
         self.open_serial()
 
-        # 시작 후 1초 뒤 1회 즉시 갱신
-        self.first_update_timer = self.create_timer(1.0, self.first_update_once)
+        # 시작 후 5초 뒤 1회 즉시 갱신
+        self.first_update_timer = self.create_timer(5.0, self.first_update_once)
 
         # 이후 60초마다 갱신
         self.timer = self.create_timer(self.update_period_sec, self.update_loop)
