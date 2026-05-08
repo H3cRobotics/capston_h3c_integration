@@ -19,7 +19,6 @@ setup(
     maintainer_email='chan@example.com',
     description='PDIST120 battery percentage reader and server uploader',
     license='TODO',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'battery_node = battery.battery_node:main',
