@@ -33,8 +33,6 @@ def generate_launch_description():
     reload_waypoints_topic = LaunchConfiguration('reload_waypoints_topic')
     command_poll_period_sec = LaunchConfiguration('command_poll_period_sec')
 
-    # Control evaluation
-    control_eval_csv_dir = LaunchConfiguration('control_eval_csv_dir')
 
     return LaunchDescription([
         DeclareLaunchArgument('server_url', default_value='http://192.168.0.16:8000'),
@@ -59,11 +57,6 @@ def generate_launch_description():
         DeclareLaunchArgument('command_topic', default_value='/patrol/command'),
         DeclareLaunchArgument('reload_waypoints_topic', default_value='/patrol/reload_waypoints'),
         DeclareLaunchArgument('command_poll_period_sec', default_value='1.0'),
-
-        DeclareLaunchArgument(
-            'control_eval_csv_dir',
-            default_value='/home/choisuhyun/scene_ad_for_patrol_robot/control_eval_logs'
-        ),
 
         Node(
             package="patrol_bridge",
@@ -116,19 +109,5 @@ def generate_launch_description():
                 "reload_waypoints_topic": reload_waypoints_topic,
                 "command_poll_period_sec": command_poll_period_sec,
             }],
-        ),
-
-        Node(
-            package="patrol_bridge",
-            executable="cal_errer_node",
-            name="cal_errer_node",
-            parameters=[{
-                "goal_topic": goal_topic,
-                "pose_topic": pose_topic,
-                "next_place_topic": next_place_topic,
-                "status_topic": status_topic,
-                "csv_dir": control_eval_csv_dir,
-            }],
-            output="screen",
         ),
     ])
