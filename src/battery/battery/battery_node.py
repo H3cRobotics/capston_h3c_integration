@@ -34,7 +34,7 @@ class BatteryNode(Node):
         # 24V 배터리 전압 기반 퍼센트 추정 기준
         # PDIST120은 SOC 직접값이 아니라 입력 전압을 읽으므로 간접 추정값입니다.
         self.empty_voltage = 21.5
-        self.full_voltage = 25.0
+        self.full_voltage = 29.4
 
         # =========================
         # ROS parameter

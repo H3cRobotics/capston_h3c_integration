@@ -32,7 +32,7 @@ def generate_launch_description():
 
     full_voltage_arg = DeclareLaunchArgument(
         'full_voltage',
-        default_value='25.0',
+        default_value='29.4',
         description='Voltage treated as 100 percent',
     )
 
