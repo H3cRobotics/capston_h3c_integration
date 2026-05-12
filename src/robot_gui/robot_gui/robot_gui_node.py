@@ -1254,9 +1254,9 @@ class SecurityRobotGui(QWidget):
         self.last_follow_state = current_state
 
         # =====================================================
-        # 인증 대기 중에는 tracking 팝업/음성 모두 막기
+        # 인증 대기/결과 표시 중에는 tracking 팝업/음성 모두 막기
         # - /auth_ready = True
-        # - auth_result_status = waiting
+        # - auth_result_status = waiting/success/fail/timeout
         # =====================================================
         auth_status = (self.ui_state.get("auth_result_status") or "").strip().lower()
         auth_ready = bool(self.ui_state.get("auth_ready"))
