@@ -1260,12 +1260,18 @@ class SecurityRobotGui(QWidget):
         # =====================================================
         auth_status = (self.ui_state.get("auth_result_status") or "").strip().lower()
         auth_ready = bool(self.ui_state.get("auth_ready"))
-        auth_waiting = auth_ready or auth_status == "waiting"
 
-        if auth_waiting:
+        auth_blocking = auth_ready or auth_status in [
+            "waiting",
+            "success",
+            "fail",
+            "timeout",
+        ]
+
+        if auth_blocking:
             print(
-                f"[TRACKING] popup/voice skipped during auth waiting: "
-                f"{prev_state} -> {current_state}"
+                f"[TRACKING] popup/voice skipped during auth event: "
+                f"auth={auth_status}, {prev_state} -> {current_state}"
             )
             return
 
