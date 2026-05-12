@@ -1253,6 +1253,25 @@ class SecurityRobotGui(QWidget):
 
         self.last_follow_state = current_state
 
+        # =====================================================
+        # 인증 대기 중에는 tracking 팝업/음성 모두 막기
+        # - /auth_ready = True
+        # - auth_result_status = waiting
+        # =====================================================
+        auth_status = (self.ui_state.get("auth_result_status") or "").strip().lower()
+        auth_ready = bool(self.ui_state.get("auth_ready"))
+        auth_waiting = auth_ready or auth_status == "waiting"
+
+        if auth_waiting:
+            print(
+                f"[TRACKING] popup/voice skipped during auth waiting: "
+                f"{prev_state} -> {current_state}"
+            )
+            return
+
+        # =====================================================
+        # 일반 tracking 이벤트
+        # =====================================================
         if current_state == "TRACKING" and prev_state == "IDLE":
             self.show_auth_popup(
                 "추적 시작",
@@ -1267,7 +1286,8 @@ class SecurityRobotGui(QWidget):
                 "대상자를 다시 탐색 중입니다",
                 "#fdba74",
             )
-            self.play_voice_event("tracking_lost")
+            # LOST 상태에서는 음성 출력하지 않음
+            # self.play_voice_event("tracking_lost")
 
     def handle_auth_popup_event(self):
         current_auth_status = (self.ui_state.get("auth_result_status") or "").strip().lower()
