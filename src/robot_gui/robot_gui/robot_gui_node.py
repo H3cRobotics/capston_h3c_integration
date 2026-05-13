@@ -513,12 +513,69 @@ class RobotGuiRosNode(Node):
 # PyQt GUI
 # ==========================================================
 class SecurityRobotGui(QWidget):
+    @staticmethod
+    def clamp(value: float, lo: float, hi: float) -> float:
+        return max(lo, min(hi, value))
+
+    def configure_screen_geometry(self):
+        """
+        현재 모니터의 사용 가능 영역에 GUI 창을 맞춘다.
+        availableGeometry()는 Ubuntu 상단바/작업표시줄 영역을 제외한 실제 사용 가능 화면이다.
+        """
+        screen = QApplication.primaryScreen()
+
+        if screen is None:
+            self.gui_x = 0
+            self.gui_y = 0
+            self.gui_w = 1180
+            self.gui_h = 720
+            self.setGeometry(self.gui_x, self.gui_y, self.gui_w, self.gui_h)
+            return
+
+        geo = screen.availableGeometry()
+        self.gui_x = geo.x()
+        self.gui_y = geo.y()
+        self.gui_w = geo.width()
+        self.gui_h = geo.height()
+
+        # 창의 client 영역을 화면 사용 가능 영역에 맞춘다.
+        self.setGeometry(self.gui_x, self.gui_y, self.gui_w, self.gui_h)
+
+        # 수동 리사이즈해도 화면보다 커지지 않도록 제한한다.
+        self.setMaximumSize(self.gui_w, self.gui_h)
+
+        # 너무 작게 줄였을 때 UI가 깨지는 것만 방지. 단, 화면 크기를 넘지 않게 min 처리.
+        min_w = min(self.gui_w, max(760, int(self.gui_w * 0.55)))
+        min_h = min(self.gui_h, max(520, int(self.gui_h * 0.55)))
+        self.setMinimumSize(min_w, min_h)
+
+    def configure_responsive_metrics(self):
+        """화면 높이에 따라 패널/폰트/여백 크기를 자동 조절한다."""
+        self.ui_scale = self.clamp(self.gui_h / 900.0, 0.72, 1.08)
+
+        self.margin_px = max(6, int(12 * self.ui_scale))
+        self.root_spacing_px = max(5, int(8 * self.ui_scale))
+        self.panel_spacing_px = max(6, int(10 * self.ui_scale))
+
+        self.title_min_h = max(32, int(42 * self.ui_scale))
+        self.title_font_px = max(14, int(19 * self.ui_scale))
+
+        # 상단 카메라/맵 영역. 3:2 가로 비율은 유지하고, 높이만 화면에 맞게 조절.
+        self.top_view_min_h = max(240, int(self.gui_h * 0.40))
+
+        # 하단 카드 영역. 작은 노트북 화면에서도 전체 GUI가 화면 밖으로 나가지 않게 조절.
+        self.robot_goal_min_h = max(130, int(self.gui_h * 0.17))
+        self.status_box_min_h = max(78, int(self.gui_h * 0.105))
+        self.mode_badge_min_h = max(42, int(self.gui_h * 0.055))
+        self.battery_min_h = max(42, int(self.gui_h * 0.055))
+
     def __init__(self, state: GuiState):
         super().__init__()
         self.state = state
 
         self.setWindowTitle("H3C Security Patrol Robot GUI")
-        self.resize(1280, 900)
+        self.configure_screen_geometry()
+        self.configure_responsive_metrics()
 
         self.last_popup_auth_status = None
         self.last_follow_state = None
@@ -551,7 +608,7 @@ class SecurityRobotGui(QWidget):
 
         self.camera_label = QLabel("Waiting for /person_tracking/annotated ...")
         self.camera_label.setAlignment(Qt.AlignCenter)
-        self.camera_label.setMinimumHeight(430)
+        self.camera_label.setMinimumHeight(self.top_view_min_h)
         self.camera_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.camera_label.setStyleSheet(f"""
             QLabel {{
@@ -567,7 +624,7 @@ class SecurityRobotGui(QWidget):
 
         self.map_label = QLabel("Map not loaded")
         self.map_label.setAlignment(Qt.AlignCenter)
-        self.map_label.setMinimumHeight(430)
+        self.map_label.setMinimumHeight(self.top_view_min_h)
         self.map_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.map_label.setStyleSheet(f"""
             QLabel {{
@@ -593,12 +650,12 @@ class SecurityRobotGui(QWidget):
         self.audio_upload_label = QLabel()
 
         self.robot_goal_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.robot_goal_label.setMinimumHeight(220)
+        self.robot_goal_label.setMinimumHeight(self.robot_goal_min_h)
         self.robot_goal_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.robot_goal_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
         self.battery_label.setAlignment(Qt.AlignCenter)
-        self.battery_label.setMinimumHeight(52)
+        self.battery_label.setMinimumHeight(self.battery_min_h)
         self.battery_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.battery_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
@@ -609,7 +666,7 @@ class SecurityRobotGui(QWidget):
             self.auth_state_label,
         ]:
             label.setAlignment(Qt.AlignCenter)
-            label.setMinimumHeight(120)
+            label.setMinimumHeight(self.status_box_min_h)
             label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
@@ -618,7 +675,7 @@ class SecurityRobotGui(QWidget):
             self.audio_upload_label,
         ]:
             label.setAlignment(Qt.AlignCenter)
-            label.setMinimumHeight(62)
+            label.setMinimumHeight(self.mode_badge_min_h)
             label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
             label.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
@@ -661,13 +718,13 @@ class SecurityRobotGui(QWidget):
 
     def _build_layout(self):
         root = QVBoxLayout()
-        root.setContentsMargins(12, 12, 12, 10)
-        root.setSpacing(8)
+        root.setContentsMargins(self.margin_px, self.margin_px, self.margin_px, max(6, int(10 * self.ui_scale)))
+        root.setSpacing(self.root_spacing_px)
 
         title = QLabel("H3C Security Patrol Robot")
-        title.setFont(QFont("DejaVu Sans", 19, QFont.Bold))
+        title.setFont(QFont("DejaVu Sans", self.title_font_px, QFont.Bold))
         title.setAlignment(Qt.AlignCenter)
-        title.setMinimumHeight(42)
+        title.setMinimumHeight(self.title_min_h)
         title.setStyleSheet(f"""
             QLabel {{
                 background-color: {PANEL_BG};
@@ -680,37 +737,37 @@ class SecurityRobotGui(QWidget):
         root.addWidget(title, stretch=0)
 
         top = QHBoxLayout()
-        top.setSpacing(10)
+        top.setSpacing(self.panel_spacing_px)
         top.addWidget(self.camera_label, stretch=3)
         top.addWidget(self.map_label, stretch=2)
         root.addLayout(top, stretch=7)
 
         middle = QHBoxLayout()
-        middle.setSpacing(10)
+        middle.setSpacing(self.panel_spacing_px)
 
         robot_box = QGroupBox("Robot / Goal")
         robot_layout = QVBoxLayout()
-        robot_layout.setSpacing(8)
+        robot_layout.setSpacing(self.root_spacing_px)
         robot_layout.addWidget(self.robot_goal_label)
         robot_layout.addWidget(self.battery_label)
         robot_box.setLayout(robot_layout)
 
         event_box = QGroupBox("Capture / Audio Event")
         event_layout = QVBoxLayout()
-        event_layout.setSpacing(10)
+        event_layout.setSpacing(self.panel_spacing_px)
         event_layout.addWidget(self.capture_state_label)
         event_layout.addWidget(self.audio_event_label)
         event_box.setLayout(event_layout)
 
         security_box = QGroupBox("Tracking / Auth / Mode")
         security_layout = QVBoxLayout()
-        security_layout.setSpacing(10)
+        security_layout.setSpacing(self.panel_spacing_px)
 
         security_layout.addWidget(self.follow_state_label)
         security_layout.addWidget(self.auth_state_label)
 
         mode_row = QHBoxLayout()
-        mode_row.setSpacing(8)
+        mode_row.setSpacing(self.root_spacing_px)
         mode_row.addWidget(self.yolo_enable_label)
         mode_row.addWidget(self.audio_upload_label)
         security_layout.addLayout(mode_row)
@@ -887,6 +944,11 @@ class SecurityRobotGui(QWidget):
         title_size: int = 16,
         subtitle_size: int = 15,
     ):
+        # 작은 화면에서는 텍스트가 카드 밖으로 밀리지 않게 폰트 크기를 같이 줄인다.
+        title_size = max(12, int(title_size * self.ui_scale))
+        value_size = max(18, int(value_size * self.ui_scale))
+        subtitle_size = max(11, int(subtitle_size * self.ui_scale))
+
         c = self.theme(theme_name)
         border = c["border"]
         bg = c["bg"]
@@ -925,6 +987,9 @@ class SecurityRobotGui(QWidget):
             value = "ON" if enabled else "OFF"
             value_size = 20
 
+        value_size = max(15, int(value_size * self.ui_scale))
+        title_size = max(10, int(13 * self.ui_scale))
+
         c = self.theme(theme_name)
 
         border = c["border"]
@@ -944,7 +1009,7 @@ class SecurityRobotGui(QWidget):
 
         label.setText(
             f"<div style='line-height:1.15; text-align:center;'>"
-            f"<span style='font-size:13px; font-weight:900; color:{TEXT_SUB};'>{title}</span>"
+            f"<span style='font-size:{title_size}px; font-weight:900; color:{TEXT_SUB};'>{title}</span>"
             f"<br>"
             f"<span style='font-size:{value_size}px; font-weight:950; color:{text_color};'>{dot} {value}</span>"
             f"</div>"
@@ -965,17 +1030,21 @@ class SecurityRobotGui(QWidget):
         robot_status = self.ui_state.get("robot_status") or "-"
         command = self.ui_state.get("patrol_command") or "-"
 
+        title_size = max(11, int(14 * self.ui_scale))
+        body_size = max(12, int(16 * self.ui_scale))
+        bottom_gap = max(8, int(16 * self.ui_scale))
+
         html = (
-            f"<div style='line-height:1.65;'>"
+            f"<div style='line-height:1.55;'>"
 
-            f"<div style='font-size:14px; font-weight:950; color:#93c5fd;'>POSE</div>"
-            f"<div style='font-size:16px; font-weight:850; color:{TEXT_MAIN}; margin-bottom:16px;'>{pose}</div>"
+            f"<div style='font-size:{title_size}px; font-weight:950; color:#93c5fd;'>POSE</div>"
+            f"<div style='font-size:{body_size}px; font-weight:850; color:{TEXT_MAIN}; margin-bottom:{bottom_gap}px;'>{pose}</div>"
 
-            f"<div style='font-size:14px; font-weight:950; color:#86efac;'>GOAL</div>"
-            f"<div style='font-size:16px; font-weight:850; color:{TEXT_MAIN}; margin-bottom:16px;'>{goal}</div>"
+            f"<div style='font-size:{title_size}px; font-weight:950; color:#86efac;'>GOAL</div>"
+            f"<div style='font-size:{body_size}px; font-weight:850; color:{TEXT_MAIN}; margin-bottom:{bottom_gap}px;'>{goal}</div>"
 
-            f"<div style='font-size:14px; font-weight:950; color:#c4b5fd;'>STATUS | CMD</div>"
-            f"<div style='font-size:16px; font-weight:950; color:{TEXT_MAIN};'>"
+            f"<div style='font-size:{title_size}px; font-weight:950; color:#c4b5fd;'>STATUS | CMD</div>"
+            f"<div style='font-size:{body_size}px; font-weight:950; color:{TEXT_MAIN};'>"
             f"{robot_status} <span style='color:{TEXT_MUTED};'>|</span> {command}"
             f"</div>"
 
@@ -987,7 +1056,7 @@ class SecurityRobotGui(QWidget):
                 background-color: {PANEL_BG_2};
                 border: 2px solid {CARD_BORDER};
                 border-radius: 14px;
-                padding: 16px;
+                padding: {max(10, int(16 * self.ui_scale))}px;
                 color: {TEXT_MAIN};
             }}
         """)
@@ -1036,7 +1105,7 @@ class SecurityRobotGui(QWidget):
                 border-radius: 14px;
                 padding: 6px;
                 color: {text_color};
-                font-size: 20px;
+                font-size: {max(15, int(20 * self.ui_scale))}px;
                 font-weight: 950;
             }}
         """)
@@ -1190,18 +1259,21 @@ class SecurityRobotGui(QWidget):
     # Popup / Voice
     # --------------------------
     def show_auth_popup(self, title: str, subtitle: str = "", color: str = "#ffffff"):
+        title_px = max(26, int(38 * self.ui_scale))
+        subtitle_px = max(16, int(22 * self.ui_scale))
+
         if subtitle:
             text = (
-                f"<div style='font-size:38px; font-weight:900; color:{color};'>{title}</div>"
-                f"<div style='font-size:22px; font-weight:700; color:#eeeeee; margin-top:8px;'>{subtitle}</div>"
+                f"<div style='font-size:{title_px}px; font-weight:900; color:{color};'>{title}</div>"
+                f"<div style='font-size:{subtitle_px}px; font-weight:700; color:#eeeeee; margin-top:8px;'>{subtitle}</div>"
             )
         else:
-            text = f"<div style='font-size:38px; font-weight:900; color:{color};'>{title}</div>"
+            text = f"<div style='font-size:{title_px}px; font-weight:900; color:{color};'>{title}</div>"
 
         self.auth_popup_label.setText(text)
 
-        popup_w = min(760, max(520, int(self.width() * 0.58)))
-        popup_h = 190
+        popup_w = min(int(self.width() * 0.78), max(420, int(self.width() * 0.58)))
+        popup_h = max(145, int(190 * self.ui_scale))
 
         x = int((self.width() - popup_w) / 2)
         y = int((self.height() - popup_h) / 2)
@@ -1639,7 +1711,9 @@ def main(args=None):
     ros_thread = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
     ros_thread.start()
 
-    gui.show()
+    # 화면 사용 가능 영역에 맞춰 최대화한다.
+    # 내부 레이아웃은 configure_screen_geometry()/configure_responsive_metrics() 기준으로 이미 조절됨.
+    gui.showMaximized()
     exit_code = app.exec_()
 
     node.destroy_node()
