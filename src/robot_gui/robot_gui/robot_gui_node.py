@@ -620,16 +620,22 @@ class SecurityRobotGui(QWidget):
             "tracking_lost": "tracking_lost.wav",
         }
 
+        self.voice_enabled = False
+        self.audio_available = False
+        self.audio_channel = None
+        self.current_sound = None
+
         if pygame is None:
-            self.voice_enabled = False
             print("[VOICE WARN] pygame is not installed. Voice disabled.")
         else:
             try:
                 pygame.mixer.init()
+                pygame.mixer.set_num_channels(4)
+                self.audio_channel = pygame.mixer.Channel(0)
+                self.audio_available = True
                 self.voice_enabled = True
                 print("[VOICE] pygame mixer initialized")
             except Exception as e:
-                self.voice_enabled = False
                 print(f"[VOICE WARN] pygame mixer init failed: {e}")
 
         self.camera_label = QLabel("Waiting for /person_tracking/annotated ...")
@@ -1338,9 +1344,6 @@ class SecurityRobotGui(QWidget):
         if not getattr(self, "voice_enabled", False):
             return
 
-        if event_key == self.last_voice_key:
-            return
-
         self.last_voice_key = event_key
 
         filename = self.voice_files.get(event_key)
@@ -1355,11 +1358,18 @@ class SecurityRobotGui(QWidget):
             return
 
         try:
+            if not self.audio_available or self.audio_channel is None:
+                print("[VOICE WARN] pygame mixer is not available")
+                return
+
             mute_sec = self.calc_mic_mute_sec(path)
             self.ros_node.publish_mic_mute(mute_sec)
 
-            pygame.mixer.music.load(path)
-            pygame.mixer.music.play()
+            self.audio_channel.stop()
+
+            self.current_sound = pygame.mixer.Sound(path)
+            self.audio_channel.play(self.current_sound)
+
             print(f"[VOICE] playing: {filename}, mute={mute_sec} sec")
         except Exception as e:
             print(f"[VOICE WARN] play failed: {e}")

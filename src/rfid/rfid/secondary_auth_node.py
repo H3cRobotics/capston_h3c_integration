@@ -53,10 +53,21 @@ class SecondaryAuthNode(Node):
         # =========================
         # 오디오(Pygame) 초기화
         # =========================
+        self.audio_available = False
+        self.audio_channel = None
+        self.current_sound = None
+
         try:
             pygame.mixer.init()
+            pygame.mixer.set_num_channels(4)
+
             # 현재 스크립트가 위치한 폴더의 절대 경로를 스스로 찾아냅니다.
             self.audio_dir = os.path.dirname(os.path.realpath(__file__))
+
+            # 짧은 안내음은 music stream보다 전용 Channel로 재생하는 편이 안정적입니다.
+            self.audio_channel = pygame.mixer.Channel(0)
+            self.audio_available = True
+
             self.get_logger().info('오디오 믹서 초기화 성공: 오디오 알림이 활성화되었습니다.')
         except Exception as e:
             self.get_logger().warn(f'오디오 믹서 초기화 실패 (소리가 나지 않을 수 있습니다): {e}')
@@ -147,18 +158,30 @@ class SecondaryAuthNode(Node):
 
     def play_sound(self, filename: str):
         """지정된 오디오 파일을 백그라운드에서 비동기로 부드럽게 재생합니다."""
+        if not self.audio_available or self.audio_channel is None:
+            self.get_logger().warn('오디오 믹서가 초기화되지 않아 소리를 재생할 수 없습니다.')
+            return
+
         if not hasattr(self, 'audio_dir'):
             return
 
-        filepath = os.path.join(self.audio_dir, filename)
+        if os.path.isabs(filename):
+            filepath = filename
+        else:
+            filepath = os.path.join(self.audio_dir, filename)
+
         if os.path.exists(filepath):
             try:
                 mute_sec = self.calc_mic_mute_sec(filepath)
                 self.publish_mic_mute(mute_sec)
 
-                pygame.mixer.music.load(filepath)
-                pygame.mixer.music.play()
-                self.get_logger().info(f'오디오 재생 중: {filename}, mute={mute_sec} sec')
+                # 이전 안내음이 아직 재생 중이면 확실히 정지한 뒤 새 안내음을 재생합니다.
+                self.audio_channel.stop()
+
+                self.current_sound = pygame.mixer.Sound(filepath)
+                self.audio_channel.play(self.current_sound)
+
+                self.get_logger().info(f'오디오 재생 중: {filepath}, mute={mute_sec} sec')
             except Exception as e:
                 self.get_logger().error(f'오디오 재생 중 오류 발생: {e}')
         else:
