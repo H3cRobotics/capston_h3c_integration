@@ -36,6 +36,7 @@ done
 N_FRAMES = 3
 SAMPLE_DT = 0.2
 
+CAPTURE_DELAY_S = 1.5
 CAPTURE_TIMEOUT_S = 5.0
 POST_TIMEOUT_S = 10.0
 
@@ -53,6 +54,7 @@ class CaptureSender(Node):
 
         self.declare_parameter("n_frames", N_FRAMES)
         self.declare_parameter("sample_dt", SAMPLE_DT)
+        self.declare_parameter("capture_delay_s", CAPTURE_DELAY_S)
         self.declare_parameter("capture_timeout_s", CAPTURE_TIMEOUT_S)
         self.declare_parameter("post_timeout_s", POST_TIMEOUT_S)
 
@@ -60,6 +62,7 @@ class CaptureSender(Node):
         self.signaling_url = str(self.get_parameter("signaling_url").value).rstrip("/")
         self.n_frames = int(self.get_parameter("n_frames").value)
         self.sample_dt = float(self.get_parameter("sample_dt").value)
+        self.capture_delay_s = float(self.get_parameter("capture_delay_s").value)
         self.capture_timeout_s = float(self.get_parameter("capture_timeout_s").value)
         self.post_timeout_s = float(self.get_parameter("post_timeout_s").value)
         self.image_topic = str(self.get_parameter("image_topic").value)
@@ -69,6 +72,7 @@ class CaptureSender(Node):
         self.get_logger().info(f"signaling_url  = {self.signaling_url}")
         self.get_logger().info(f"n_frames       = {self.n_frames}")
         self.get_logger().info(f"sample_dt      = {self.sample_dt}")
+        self.get_logger().info(f"capture_delay_s   = {self.capture_delay_s}")
         self.get_logger().info(f"capture_timeout_s = {self.capture_timeout_s}")
         self.get_logger().info(f"post_timeout_s    = {self.post_timeout_s}")
 
@@ -157,10 +161,11 @@ class CaptureSender(Node):
 
         self.get_logger().info(f"capture trigger received: place_id={self.place_id}")
 
-        self.worker_thread = threading.Thread(
-            target=self.send_worker,
-            daemon=False,
+        self.worker_thread = threading.Timer(
+            self.capture_delay_s,
+            self.send_worker,
         )
+        self.worker_thread.daemon = False
         self.worker_thread.start()
 
     def publish_capture_result(self, status: str, place_id: str):
@@ -171,6 +176,8 @@ class CaptureSender(Node):
 
     def send_worker(self):
         if self.shutdown_requested:
+            with self.lock:
+                self.sending = False
             return
         
         current_place_id = self.place_id

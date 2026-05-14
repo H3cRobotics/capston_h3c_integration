@@ -110,7 +110,7 @@ class GuiState:
         self.capture_result_hold_sec: float = 3.0
 
         self.auth_result_last_time: float = 0.0
-        self.auth_result_hold_sec: float = 5.0
+        self.auth_result_hold_sec: float = 3.0
 
         self.goal_x: Optional[float] = None
         self.goal_y: Optional[float] = None
