@@ -5,6 +5,7 @@ import os
 import sys
 import json
 import math
+import wave
 import time
 import threading
 from typing import Optional
@@ -177,6 +178,9 @@ class RobotGuiRosNode(Node):
         self.declare_parameter("capture_trigger_topic", "/patrol/capture_trigger")
         self.declare_parameter("capture_done_topic", "/patrol/capture_done")
         self.declare_parameter("sound_event_topic", "/sound/event")
+        self.declare_parameter("mic_mute_topic", "/sound/mic_mute_sec")
+        self.declare_parameter("mic_mute_fallback_sec", 3)
+        self.declare_parameter("mic_mute_margin_sec", 0.5)
 
         self.declare_parameter("map_yaml_path", "")
 
@@ -200,9 +204,18 @@ class RobotGuiRosNode(Node):
         capture_trigger_topic = self.get_parameter("capture_trigger_topic").value
         capture_done_topic = self.get_parameter("capture_done_topic").value
         sound_event_topic = self.get_parameter("sound_event_topic").value
+        self.mic_mute_topic = self.get_parameter("mic_mute_topic").value
+        self.mic_mute_fallback_sec = int(self.get_parameter("mic_mute_fallback_sec").value)
+        self.mic_mute_margin_sec = float(self.get_parameter("mic_mute_margin_sec").value)
 
         map_yaml_path = str(self.get_parameter("map_yaml_path").value)
         self.load_map_yaml(map_yaml_path)
+
+        self.mic_mute_pub = self.create_publisher(
+            Int32,
+            self.mic_mute_topic,
+            10
+        )
 
         self.create_subscription(Image, annotated_topic, self.annotated_cb, 10)
         self.create_subscription(Pose2D, robot_pose_topic, self.robot_pose_cb, 10)
@@ -245,7 +258,19 @@ class RobotGuiRosNode(Node):
         self.get_logger().info(f"auth_ready={auth_ready_topic}, auth_result={auth_result_topic}")
         self.get_logger().info(f"capture_trigger={capture_trigger_topic}, capture_done={capture_done_topic}")
         self.get_logger().info(f"sound_event={sound_event_topic}")
+        self.get_logger().info(
+            f"mic_mute={self.mic_mute_topic}, "
+            f"fallback={self.mic_mute_fallback_sec}, "
+            f"margin={self.mic_mute_margin_sec}"
+        )
         self.get_logger().info(f"map_yaml_path={map_yaml_path}")
+
+
+    def publish_mic_mute(self, mute_sec: int):
+        msg = Int32()
+        msg.data = int(mute_sec)
+        self.mic_mute_pub.publish(msg)
+        self.get_logger().info(f"[VOICE] mic temporary mute requested: {mute_sec} sec")
 
     # --------------------------
     # Map loading
@@ -569,9 +594,10 @@ class SecurityRobotGui(QWidget):
         self.mode_badge_min_h = max(42, int(self.gui_h * 0.055))
         self.battery_min_h = max(42, int(self.gui_h * 0.055))
 
-    def __init__(self, state: GuiState):
+    def __init__(self, state: GuiState, ros_node: RobotGuiRosNode):
         super().__init__()
         self.state = state
+        self.ros_node = ros_node
 
         self.setWindowTitle("H3C Security Patrol Robot GUI")
         self.configure_screen_geometry()
@@ -1289,6 +1315,25 @@ class SecurityRobotGui(QWidget):
         self.auth_popup_anim.setEndValue(0.0)
         self.auth_popup_anim.start()
 
+    def get_wav_duration_sec(self, path: str) -> float:
+        try:
+            with wave.open(path, 'rb') as wf:
+                frames = wf.getnframes()
+                rate = wf.getframerate()
+
+                if rate <= 0:
+                    return float(self.ros_node.mic_mute_fallback_sec)
+
+                return frames / float(rate)
+        except Exception as e:
+            print(f"[VOICE WARN] wav duration failed, use default mute sec: {e}")
+            return float(self.ros_node.mic_mute_fallback_sec)
+
+    def calc_mic_mute_sec(self, path: str) -> int:
+        duration_sec = self.get_wav_duration_sec(path)
+        mute_sec = int(math.ceil(duration_sec + self.ros_node.mic_mute_margin_sec))
+        return max(1, mute_sec)
+
     def play_voice_event(self, event_key: str):
         if not getattr(self, "voice_enabled", False):
             return
@@ -1310,9 +1355,12 @@ class SecurityRobotGui(QWidget):
             return
 
         try:
+            mute_sec = self.calc_mic_mute_sec(path)
+            self.ros_node.publish_mic_mute(mute_sec)
+
             pygame.mixer.music.load(path)
             pygame.mixer.music.play()
-            print(f"[VOICE] playing: {filename}")
+            print(f"[VOICE] playing: {filename}, mute={mute_sec} sec")
         except Exception as e:
             print(f"[VOICE WARN] play failed: {e}")
 
@@ -1706,7 +1754,7 @@ def main(args=None):
     state = GuiState()
 
     node = RobotGuiRosNode(state)
-    gui = SecurityRobotGui(state)
+    gui = SecurityRobotGui(state, node)
 
     ros_thread = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
     ros_thread.start()

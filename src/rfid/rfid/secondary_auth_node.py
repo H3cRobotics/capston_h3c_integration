@@ -5,6 +5,8 @@ import os
 import time
 import subprocess
 import json
+import wave
+import math
 
 from datetime import datetime
 from threading import Lock
@@ -16,7 +18,7 @@ import pygame  # 오디오 재생을 위한 라이브러리
 import rclpy
 from rclpy.node import Node
 
-from std_msgs.msg import String, Bool
+from std_msgs.msg import String, Bool, Int32
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
@@ -36,6 +38,7 @@ class SecondaryAuthNode(Node):
         self.follow_person_id_topic = '/person_tracking/follow_person_id'
         self.annotated_topic = '/person_tracking/annotated'
         self.auth_ready_topic = '/auth_ready'
+        self.mic_mute_topic = '/sound/mic_mute_sec'
 
         self.reader_name_hint = 'ACR122'
         self.auth_timeout_sec = 10.0
@@ -43,6 +46,9 @@ class SecondaryAuthNode(Node):
         self.request_timeout_sec = 5.0
         self.jpeg_quality = 90
         self.rfid_read_cooldown_sec = 1.5
+
+        self.mic_mute_fallback_sec = 3
+        self.mic_mute_margin_sec = 0.5
 
         # =========================
         # 오디오(Pygame) 초기화
@@ -81,6 +87,11 @@ class SecondaryAuthNode(Node):
             "/auth/result",
             10
         )
+        self.mic_mute_pub = self.create_publisher(
+            Int32,
+            self.mic_mute_topic,
+            10
+        )
         self.last_auth_ready: bool = False
         self.last_uid: Optional[str] = None
         self.last_uid_read_ts: float = 0.0
@@ -102,12 +113,38 @@ class SecondaryAuthNode(Node):
         self.get_logger().info(
             f'SecondaryAuthNode started | '
             f'server={self.server_base_url} | '
-            f'reader_hint={self.reader_name_hint}'
+            f'reader_hint={self.reader_name_hint} | '
+            f'mic_mute_topic={self.mic_mute_topic}'
         )
 
     # =========================
     # 오디오 재생 전담 헬퍼 함수
     # =========================
+    def get_wav_duration_sec(self, filepath: str) -> float:
+        try:
+            with wave.open(filepath, 'rb') as wf:
+                frames = wf.getnframes()
+                rate = wf.getframerate()
+
+                if rate <= 0:
+                    return float(self.mic_mute_fallback_sec)
+
+                return frames / float(rate)
+        except Exception as e:
+            self.get_logger().warn(f'wav 길이 계산 실패, 기본 mute 시간 사용: {e}')
+            return float(self.mic_mute_fallback_sec)
+
+    def calc_mic_mute_sec(self, filepath: str) -> int:
+        duration_sec = self.get_wav_duration_sec(filepath)
+        mute_sec = int(math.ceil(duration_sec + self.mic_mute_margin_sec))
+        return max(1, mute_sec)
+
+    def publish_mic_mute(self, mute_sec: int):
+        msg = Int32()
+        msg.data = int(mute_sec)
+        self.mic_mute_pub.publish(msg)
+        self.get_logger().info(f'마이크 임시 비활성화 요청: {mute_sec} sec')
+
     def play_sound(self, filename: str):
         """지정된 오디오 파일을 백그라운드에서 비동기로 부드럽게 재생합니다."""
         if not hasattr(self, 'audio_dir'):
@@ -116,9 +153,12 @@ class SecondaryAuthNode(Node):
         filepath = os.path.join(self.audio_dir, filename)
         if os.path.exists(filepath):
             try:
+                mute_sec = self.calc_mic_mute_sec(filepath)
+                self.publish_mic_mute(mute_sec)
+
                 pygame.mixer.music.load(filepath)
                 pygame.mixer.music.play()
-                self.get_logger().info(f'오디오 재생 중: {filename}')
+                self.get_logger().info(f'오디오 재생 중: {filename}, mute={mute_sec} sec')
             except Exception as e:
                 self.get_logger().error(f'오디오 재생 중 오류 발생: {e}')
         else:

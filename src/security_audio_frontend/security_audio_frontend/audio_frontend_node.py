@@ -10,7 +10,7 @@ import sounddevice as sd
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float32, Bool
+from std_msgs.msg import Float32, Bool, Int32
 
 from security_audio_msgs.msg import AudioClipInfo
 #from .doa_wpe_music import WpeMusicDoaEstimator
@@ -60,6 +60,7 @@ class AudioFrontendNode(Node):
         self.declare_parameter('doa_topic', '/sound/doa_deg')
         self.declare_parameter('enable_doa_sub', True)
         self.declare_parameter('upload_enable_topic', '/sound/upload_enable')
+        self.declare_parameter('mic_mute_topic', '/sound/mic_mute_sec')
         self.declare_parameter('start_enabled', True)
 
         # ---- final mapping params (same convention as realtime DOA node) ----
@@ -95,6 +96,7 @@ class AudioFrontendNode(Node):
         self.doa_topic = str(self.get_parameter('doa_topic').value)
         self.enable_doa_sub = bool(self.get_parameter('enable_doa_sub').value)
         self.upload_enable_topic = str(self.get_parameter('upload_enable_topic').value)
+        self.mic_mute_topic = str(self.get_parameter('mic_mute_topic').value)
         self.audio_enabled = bool(self.get_parameter('start_enabled').value)
 
         self.front_offset_deg = float(self.get_parameter('front_offset_deg').value)
@@ -150,6 +152,7 @@ class AudioFrontendNode(Node):
         self.last_trigger_time = 0.0
         self.consecutive_hit_count = 0
         self.latest_doa_deg = 0.0
+        self.mic_mute_until_mono = 0.0
 
         if self.enable_doa_sub:
             self.create_subscription(Float32, self.doa_topic, self.doa_callback, 10)
@@ -158,6 +161,13 @@ class AudioFrontendNode(Node):
             Bool,
             self.upload_enable_topic,
             self.upload_enable_callback,
+            10
+        )
+
+        self.create_subscription(
+            Int32,
+            self.mic_mute_topic,
+            self.mic_mute_callback,
             10
         )
 
@@ -198,6 +208,7 @@ class AudioFrontendNode(Node):
         )
         self.get_logger().info(
             f'audio_frontend_node started | upload_enable_topic={self.upload_enable_topic} | '
+            f'mic_mute_topic={self.mic_mute_topic} | '
             f'audio_enabled={self.audio_enabled}'
         )
 
@@ -252,6 +263,22 @@ class AudioFrontendNode(Node):
             state_text = 'enabled' if enabled else 'disabled'
             self.get_logger().info(f'Audio frontend {state_text} by {self.upload_enable_topic}')
 
+    def mic_mute_callback(self, msg: Int32):
+        mute_sec = int(msg.data)
+
+        if mute_sec <= 0:
+            return
+
+        mute_until = time.monotonic() + float(mute_sec)
+
+        with self.lock:
+            self.mic_mute_until_mono = max(self.mic_mute_until_mono, mute_until)
+            self.reset_audio_state_locked()
+
+        self.get_logger().info(
+            f'Audio frontend temporary muted for {mute_sec} sec by {self.mic_mute_topic}'
+        )
+
     @staticmethod
     def wrap_deg_pm180(deg: float) -> float:
         while deg > 180.0:
@@ -277,6 +304,10 @@ class AudioFrontendNode(Node):
 
         with self.lock:
             if not self.audio_enabled:
+                return
+
+            if now < self.mic_mute_until_mono:
+                self.reset_audio_state_locked()
                 return
 
             self.ring_buffer.extend(audio_chunk.tolist())
@@ -394,6 +425,9 @@ class AudioFrontendNode(Node):
     def flush_completed_events(self):
         with self.lock:
             if not self.audio_enabled:
+                self.completed_events.clear()
+                return
+            if time.monotonic() < self.mic_mute_until_mono:
                 self.completed_events.clear()
                 return
             if not self.completed_events:
