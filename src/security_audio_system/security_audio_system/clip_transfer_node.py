@@ -18,7 +18,7 @@ class ClipTransferNode(Node):
         self.declare_parameter('server_url', 'http://10.162.213.189:8000')
         self.declare_parameter('pose_topic', '/robot_pose')
         self.declare_parameter('upload_enable_topic', '/sound/upload_enable')
-        self.declare_parameter('start_enabled', True)
+        self.declare_parameter('start_enabled', False)
 
         self.server_url = self.get_parameter('server_url').value
         self.pose_topic = self.get_parameter('pose_topic').value

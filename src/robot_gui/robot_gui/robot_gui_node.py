@@ -1013,14 +1013,9 @@ class SecurityRobotGui(QWidget):
         if enabled is None:
             theme_name = "gray"
             value = "WAITING"
-            value_size = 18
         else:
             theme_name = "green" if enabled else "gray"
             value = "ON" if enabled else "OFF"
-            value_size = 20
-
-        value_size = max(15, int(value_size * self.ui_scale))
-        title_size = max(10, int(13 * self.ui_scale))
 
         c = self.theme(theme_name)
 
@@ -1029,18 +1024,33 @@ class SecurityRobotGui(QWidget):
         text_color = c["text"]
         dot = "●"
 
+        # 현재 실제 QLabel 높이를 기준으로 폰트 크기 자동 조절
+        h = max(1, label.height())
+
+        # padding + border를 제외하고 두 줄이 들어갈 수 있게 계산
+        # 박스가 낮으면 자동으로 작아지고, 충분히 크면 너무 커지지 않게 제한
+        title_size = int(h * 0.23)
+        value_size = int(h * 0.32)
+
+        title_size = max(8, min(title_size, 13))
+        value_size = max(11, min(value_size, 20))
+
+        # WAITING은 글자가 길어서 조금 더 줄임
+        if value == "WAITING":
+            value_size = min(value_size, 16)
+
         label.setStyleSheet(f"""
             QLabel {{
                 background-color: {bg};
                 border: 2px solid {border};
                 border-radius: 12px;
-                padding: 8px 6px;
+                padding: 4px 6px;
                 color: {TEXT_MAIN};
             }}
         """)
 
         label.setText(
-            f"<div style='line-height:1.15; text-align:center;'>"
+            f"<div style='line-height:1.00; text-align:center;'>"
             f"<span style='font-size:{title_size}px; font-weight:900; color:{TEXT_SUB};'>{title}</span>"
             f"<br>"
             f"<span style='font-size:{value_size}px; font-weight:950; color:{text_color};'>{dot} {value}</span>"

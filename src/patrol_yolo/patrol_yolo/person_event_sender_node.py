@@ -36,10 +36,10 @@ class PersonEventSenderNode(Node):
         self.declare_parameter("global_cooldown_sec", 1.0)
 
         # dwelling
-        self.declare_parameter("dwell_time_sec", 10.0)
+        self.declare_parameter("dwell_time_sec", 15.0)
 
         # new stable person present event
-        self.declare_parameter("new_person_stable_sec", 1.0)
+        self.declare_parameter("new_person_stable_sec", 1.5)
 
         # bbox filter
         self.declare_parameter("min_bbox_w", 40)

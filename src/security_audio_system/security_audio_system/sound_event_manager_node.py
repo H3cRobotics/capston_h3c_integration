@@ -10,7 +10,7 @@ class SoundEventManagerNode(Node):
         super().__init__('sound_event_manager_node')
 
         self.declare_parameter('upload_enable_topic', '/sound/upload_enable')
-        self.declare_parameter('start_enabled', True)
+        self.declare_parameter('start_enabled', False)
 
         self.upload_enable_topic = str(self.get_parameter('upload_enable_topic').value)
         self.audio_enabled = bool(self.get_parameter('start_enabled').value)
