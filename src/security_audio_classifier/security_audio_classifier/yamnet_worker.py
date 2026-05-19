@@ -76,7 +76,8 @@ def collapse_to_task_classes(top_labels, top_scores):
         if any(k in l for k in impact_keywords):
             return "impact"
         if any(k in l for k in speech_keywords):
-            return "speech"
+            return "ignore"
+            #return "speech"
         return None
 
     check_n = min(3, len(top_labels))
