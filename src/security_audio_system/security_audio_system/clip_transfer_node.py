@@ -97,13 +97,21 @@ class ClipTransferNode(Node):
                 )
                 self.publish_status(msg.event_id, False, 'audio system disabled')
                 return
-
+            """
             if msg.label == 'ignore':
                 self.get_logger().info(
                     f'Skip upload: event_id={msg.event_id}, label=ignore'
                 )
                 self.publish_status(msg.event_id, False, 'ignored event')
                 return
+            """
+            if msg.label in ('ignore', 'speech'):
+                self.get_logger().info(
+                    f'Skip upload: event_id={msg.event_id}, label={msg.label}'
+                )
+                self.publish_status(msg.event_id, False, f'ignored event: {msg.label}')
+                return
+
 
             if self.x is None or self.y is None or self.yaw is None:
                 raise RuntimeError('robot pose is not available yet')
